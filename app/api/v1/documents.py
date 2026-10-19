@@ -2,8 +2,9 @@
 Rutas para la gestión de documentos (/api/v1/documents).
 """
 
-from typing import Annotated
 import uuid
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Path, Query, Response, status
 
 from app.api.dependencies import get_document_service
@@ -13,8 +14,8 @@ from app.api.schemas import (
     DocumentSummaryResponse,
     PaginatedDocumentsResponse,
 )
-from app.application.dtos import CreateDocumentDTO
 from app.application.document_service import DocumentService
+from app.application.dtos import CreateDocumentDTO
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 

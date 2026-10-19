@@ -3,6 +3,7 @@ Implementación concreta de DocumentRepository para PostgreSQL con SQLAlchemy 2.
 """
 
 from typing import Optional
+
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -103,9 +104,7 @@ class PostgresDocumentRepository(DocumentRepository):
     async def find_by_checksum(self, checksum: str) -> Optional[Document]:
         try:
             async with self._session_factory() as session:
-                stmt = select(DocumentORM).where(
-                    DocumentORM.checksum_sha256 == checksum
-                )
+                stmt = select(DocumentORM).where(DocumentORM.checksum_sha256 == checksum)
                 result = await session.execute(stmt)
                 orm_doc = result.scalar_one_or_none()
                 return self._to_entity(orm_doc) if orm_doc else None
@@ -118,9 +117,7 @@ class PostgresDocumentRepository(DocumentRepository):
                 f"Error inesperado al buscar por checksum: {str(exc)}"
             ) from exc
 
-    async def list_paginated(
-        self, skip: int = 0, limit: int = 20
-    ) -> tuple[list[Document], int]:
+    async def list_paginated(self, skip: int = 0, limit: int = 20) -> tuple[list[Document], int]:
         try:
             async with self._session_factory() as session:
                 count_stmt = select(func.count()).select_from(DocumentORM)

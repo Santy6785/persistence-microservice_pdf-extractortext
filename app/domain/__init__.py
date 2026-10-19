@@ -1,12 +1,12 @@
 """Capa de dominio del microservicio persistence."""
 
-from app.domain.models import Document
 from app.domain.exceptions import (
-    DomainError,
-    DocumentNotFoundError,
     DocumentAlreadyExistsError,
+    DocumentNotFoundError,
+    DomainError,
     PersistenceInfrastructureError,
 )
+from app.domain.models import Document
 from app.domain.repositories import DocumentRepository
 
 __all__ = [

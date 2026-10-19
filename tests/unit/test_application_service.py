@@ -1,8 +1,9 @@
 import pytest
-from app.application.dtos import CreateDocumentDTO
+
 from app.application.document_service import DocumentService
+from app.application.dtos import CreateDocumentDTO
+from app.domain.exceptions import DocumentAlreadyExistsError, DocumentNotFoundError
 from app.infrastructure.repositories.memory import InMemoryDocumentRepository
-from app.domain.exceptions import DocumentNotFoundError, DocumentAlreadyExistsError
 
 
 @pytest.fixture

@@ -1,12 +1,12 @@
 import pytest
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
-from app.infrastructure.database.models import Base
-from app.infrastructure.database.connection import create_session_factory
-from app.infrastructure.repositories.postgres import PostgresDocumentRepository
 from app.domain.exceptions import PersistenceInfrastructureError
+from app.infrastructure.database.connection import create_session_factory
+from app.infrastructure.database.models import Base
+from app.infrastructure.repositories.postgres import PostgresDocumentRepository
 from tests.contract.test_repository_contract import BaseDocumentRepositoryContractTest
 
 
@@ -36,7 +36,7 @@ except ImportError:
 
 @pytest.mark.integration
 class TestPostgresDocumentRepository(BaseDocumentRepositoryContractTest):
-    """Ejecución de la suite completa de contrato contra un PostgreSQL 16 real usando Testcontainers."""
+    """Ejecución de contrato contra PostgreSQL 16 real usando Testcontainers."""
 
     _container = None
     _async_url = None
@@ -48,13 +48,9 @@ class TestPostgresDocumentRepository(BaseDocumentRepositoryContractTest):
 
         raw_url = cls._container.get_connection_url()
         if raw_url.startswith("postgresql+psycopg2://"):
-            cls._async_url = raw_url.replace(
-                "postgresql+psycopg2://", "postgresql+asyncpg://", 1
-            )
+            cls._async_url = raw_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
         elif raw_url.startswith("postgresql://"):
-            cls._async_url = raw_url.replace(
-                "postgresql://", "postgresql+asyncpg://", 1
-            )
+            cls._async_url = raw_url.replace("postgresql://", "postgresql+asyncpg://", 1)
         else:
             cls._async_url = raw_url
 
@@ -86,7 +82,7 @@ class TestPostgresDocumentRepository(BaseDocumentRepositoryContractTest):
         return self._repo
 
     async def test_infrastructure_error_is_raised_never_swallowed(self):
-        """Verifica que un fallo de infraestructura eleva PersistenceInfrastructureError y nunca devuelve None o False."""
+        """Verifica que un fallo de infraestructura eleva PersistenceInfrastructureError."""
         broken_engine = create_async_engine(
             "postgresql+asyncpg://invalid:invalid@127.0.0.1:59999/broken",
             poolclass=NullPool,

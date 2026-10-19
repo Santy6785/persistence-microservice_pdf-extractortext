@@ -1,12 +1,14 @@
 from datetime import datetime, timezone
+
 import pytest
-from app.domain.models import Document
+
 from app.domain.exceptions import (
-    DomainError,
-    DocumentNotFoundError,
     DocumentAlreadyExistsError,
+    DocumentNotFoundError,
+    DomainError,
     PersistenceInfrastructureError,
 )
+from app.domain.models import Document
 
 
 def test_document_creation_valid():

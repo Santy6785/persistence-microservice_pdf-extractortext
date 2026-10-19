@@ -3,11 +3,12 @@ Servicio de aplicación para la gestión de documentos.
 Orquesta casos de uso de negocio y coordina con el repositorio.
 """
 
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
+
 from app.application.dtos import CreateDocumentDTO, PaginatedDocumentsDTO
-from app.domain.models import Document
 from app.domain.exceptions import DocumentNotFoundError
+from app.domain.models import Document
 from app.domain.repositories import DocumentRepository
 
 
@@ -50,9 +51,7 @@ class DocumentService:
             raise DocumentNotFoundError(document_id=checksum)
         return doc
 
-    async def list_documents(
-        self, skip: int = 0, limit: int = 20
-    ) -> PaginatedDocumentsDTO:
+    async def list_documents(self, skip: int = 0, limit: int = 20) -> PaginatedDocumentsDTO:
         """Retorna lista paginada de documentos con total."""
         items, total = await self._repository.list_paginated(skip=skip, limit=limit)
         return PaginatedDocumentsDTO(

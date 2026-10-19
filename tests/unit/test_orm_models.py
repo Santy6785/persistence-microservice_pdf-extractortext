@@ -1,5 +1,4 @@
-from sqlalchemy import inspect
-from app.infrastructure.database.models import DocumentORM, Base
+from app.infrastructure.database.models import DocumentORM
 
 
 def test_document_orm_table_definition():

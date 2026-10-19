@@ -5,6 +5,7 @@ Viven exclusivamente dentro de la capa de infraestructura.
 
 from datetime import datetime
 from typing import Any, Optional
+
 from sqlalchemy import BigInteger, DateTime, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -39,10 +40,6 @@ class DocumentORM(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    __table_args__ = (
-        Index("ix_documents_created_at_id", "created_at", "id"),
-    )
+    __table_args__ = (Index("ix_documents_created_at_id", "created_at", "id"),)

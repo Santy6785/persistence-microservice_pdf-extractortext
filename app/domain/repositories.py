@@ -5,6 +5,7 @@ Define el contrato abstracto que cualquier implementación técnica debe satisfa
 
 from abc import ABC, abstractmethod
 from typing import Optional
+
 from app.domain.models import Document
 
 
@@ -49,9 +50,7 @@ class DocumentRepository(ABC):
         pass
 
     @abstractmethod
-    async def list_paginated(
-        self, skip: int = 0, limit: int = 20
-    ) -> tuple[list[Document], int]:
+    async def list_paginated(self, skip: int = 0, limit: int = 20) -> tuple[list[Document], int]:
         """
         Retorna una tupla de (documentos, total_count) con paginación determinista
         ordenada por created_at DESC, id ASC.

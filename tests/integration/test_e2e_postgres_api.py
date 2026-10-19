@@ -1,15 +1,14 @@
 import os
-import pytest
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy.pool import NullPool
-from sqlalchemy.ext.asyncio import create_async_engine
 
+import pytest
 from alembic import command
 from alembic.config import Config
-from app.main import create_app
-from app.config import Settings
-from app.api.dependencies import _engine, _session_factory
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import NullPool
+
 import app.api.dependencies as deps
+from app.main import create_app
 
 
 def is_docker_available() -> bool:
@@ -46,9 +45,7 @@ async def test_alembic_and_e2e_real_postgres():
     with PostgresContainer("postgres:16-alpine") as postgres:
         raw_url = postgres.get_connection_url()
         if raw_url.startswith("postgresql+psycopg2://"):
-            async_url = raw_url.replace(
-                "postgresql+psycopg2://", "postgresql+asyncpg://", 1
-            )
+            async_url = raw_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
         elif raw_url.startswith("postgresql://"):
             async_url = raw_url.replace("postgresql://", "postgresql+asyncpg://", 1)
         else:
@@ -56,6 +53,7 @@ async def test_alembic_and_e2e_real_postgres():
 
         # 1. Ejecutar migraciones de Alembic en thread aislado
         import asyncio
+
         os.environ["DATABASE_URL"] = async_url
         alembic_cfg = Config("alembic.ini")
         alembic_cfg.set_main_option("sqlalchemy.url", async_url)

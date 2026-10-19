@@ -3,9 +3,9 @@ Entidades puras de la capa de dominio.
 Sin dependencias de frameworks ni librerías de infraestructura.
 """
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
-import re
 from typing import Any, Optional
 
 _HEX_64_PATTERN = re.compile(r"^[a-fA-F0-9]{64}$")

@@ -2,10 +2,12 @@
 Esquemas Pydantic v2 para validación de entrada y serialización de salida en la API HTTP.
 """
 
-from datetime import datetime, timezone
 import re
+from datetime import datetime
 from typing import Any, Optional
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from app.domain.models import Document
 
 _HEX_64_PATTERN = re.compile(r"^[a-f0-9]{64}$")

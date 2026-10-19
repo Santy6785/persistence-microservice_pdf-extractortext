@@ -5,6 +5,7 @@ Nota: Es la única excepción al formato uniforme de error, respetando contratos
 
 import logging
 from typing import Annotated
+
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -16,7 +17,7 @@ router = APIRouter(prefix="/health", tags=["Health"])
 
 
 async def check_db_health() -> bool:
-    """Ejecuta una consulta liviana (SELECT 1) para comprobar conectividad activa a la base de datos."""
+    """Ejecuta una consulta liviana (SELECT 1) para comprobar conectividad activa a la base."""
     try:
         session_factory = get_session_factory()
         async with session_factory() as session:

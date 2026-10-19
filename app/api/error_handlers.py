@@ -3,9 +3,10 @@ Manejadores globales y centralizados de errores HTTP.
 Transforman cualquier excepción a la estructura de error uniforme del microservicio.
 """
 
-from datetime import datetime, timezone
 import logging
+from datetime import datetime, timezone
 from typing import Any
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -14,7 +15,6 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.domain.exceptions import (
     DocumentAlreadyExistsError,
     DocumentNotFoundError,
-    DomainError,
     PersistenceInfrastructureError,
 )
 
@@ -71,9 +71,7 @@ async def validation_exception_handler(
     return JSONResponse(status_code=422, content=payload)
 
 
-async def document_not_found_handler(
-    request: Request, exc: DocumentNotFoundError
-) -> JSONResponse:
+async def document_not_found_handler(request: Request, exc: DocumentNotFoundError) -> JSONResponse:
     """Mapea DocumentNotFoundError a 404 con formato uniforme."""
     req_id = _get_request_id(request)
     payload = build_error_payload(
@@ -99,9 +97,7 @@ async def document_already_exists_handler(
     return JSONResponse(status_code=409, content=payload)
 
 
-async def http_exception_handler(
-    request: Request, exc: StarletteHTTPException
-) -> JSONResponse:
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     """Mapea excepciones HTTP estándar (404 ruta inexistente, 405, 413, etc.) a formato uniforme."""
     req_id = _get_request_id(request)
     code_map = {
@@ -122,7 +118,7 @@ async def http_exception_handler(
 async def persistence_infrastructure_handler(
     request: Request, exc: PersistenceInfrastructureError
 ) -> JSONResponse:
-    """Mapea fallas de infraestructura de persistencia a 500 uniforme sin exponer secretos ni texto."""
+    """Mapea fallas de infraestructura de persistencia a 500 uniforme sin exponer secretos."""
     req_id = _get_request_id(request)
     logger.error("Persistence infrastructure failure [req_id=%s]: %s", req_id, str(exc))
     payload = build_error_payload(
@@ -134,9 +130,7 @@ async def persistence_infrastructure_handler(
     return JSONResponse(status_code=500, content=payload)
 
 
-async def unhandled_exception_handler(
-    request: Request, exc: Exception
-) -> JSONResponse:
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Mapea cualquier excepción inesperada a 500 uniforme."""
     req_id = _get_request_id(request)
     logger.error("Unhandled exception [req_id=%s]: %s", req_id, str(exc), exc_info=True)

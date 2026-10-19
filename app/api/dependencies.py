@@ -3,12 +3,14 @@ Inyección de dependencias para los endpoints de FastAPI.
 """
 
 from typing import Annotated
+
 from fastapi import Depends
+
+from app.application.document_service import DocumentService
 from app.config import get_settings
 from app.domain.repositories import DocumentRepository
 from app.infrastructure.database.connection import create_engine, create_session_factory
 from app.infrastructure.repositories.postgres import PostgresDocumentRepository
-from app.application.document_service import DocumentService
 
 # Engine y session factory singleton para runtime
 _engine = None

@@ -5,8 +5,9 @@ Utilizada para tests unitarios rápidos y tests de contrato.
 
 from copy import deepcopy
 from typing import Optional
-from app.domain.models import Document
+
 from app.domain.exceptions import DocumentAlreadyExistsError
+from app.domain.models import Document
 from app.domain.repositories import DocumentRepository
 
 
@@ -46,9 +47,7 @@ class InMemoryDocumentRepository(DocumentRepository):
             return None
         return await self.find_by_id(doc_id)
 
-    async def list_paginated(
-        self, skip: int = 0, limit: int = 20
-    ) -> tuple[list[Document], int]:
+    async def list_paginated(self, skip: int = 0, limit: int = 20) -> tuple[list[Document], int]:
         total = len(self._documents)
         # Orden determinista: created_at DESC, id ASC
         sorted_docs = sorted(

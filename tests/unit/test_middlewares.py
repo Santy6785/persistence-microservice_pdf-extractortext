@@ -1,7 +1,8 @@
 import pytest
-from httpx import ASGITransport, AsyncClient
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from httpx import ASGITransport, AsyncClient
+
 from app.api.middlewares import RequestIdMiddleware, RequestSizeLimitMiddleware
 
 

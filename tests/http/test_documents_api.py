@@ -1,12 +1,12 @@
 import pytest
-from httpx import ASGITransport, AsyncClient
 from fastapi import FastAPI
-from app.main import create_app
+from httpx import ASGITransport, AsyncClient
+
 from app.api.dependencies import get_document_repository
-from app.infrastructure.repositories.memory import InMemoryDocumentRepository
 from app.domain.exceptions import PersistenceInfrastructureError
 from app.domain.models import Document
-from datetime import datetime, timezone
+from app.infrastructure.repositories.memory import InMemoryDocumentRepository
+from app.main import create_app
 
 
 @pytest.fixture

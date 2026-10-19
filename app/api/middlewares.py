@@ -1,13 +1,15 @@
 """
 Middlewares ASGI para la capa API:
 1. RequestIdMiddleware: Extracción o generación de X-Request-ID y propagación en respuesta.
-2. RequestSizeLimitMiddleware: Rechazo temprano (HTTP 413) por Content-Length o streaming sin buffer en memoria.
+2. RequestSizeLimitMiddleware: Rechazo temprano (HTTP 413) por Content-Length o streaming.
 """
 
 import uuid
+
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
 from app.api.error_handlers import build_error_payload
 
 
@@ -78,7 +80,10 @@ class RequestSizeLimitMiddleware:
                 if content_length > self.max_size_bytes:
                     payload = build_error_payload(
                         code="PAYLOAD_TOO_LARGE",
-                        message=f"Request payload exceeds maximum allowed size of {self.max_size_bytes} bytes.",
+                        message=(
+                            f"Request payload exceeds maximum allowed size of "
+                            f"{self.max_size_bytes} bytes."
+                        ),
                         details={
                             "content_length": content_length,
                             "max_size_bytes": self.max_size_bytes,
@@ -109,7 +114,10 @@ class RequestSizeLimitMiddleware:
             state_req_id = scope.get("state", {}).get("request_id", request_id)
             payload = build_error_payload(
                 code="PAYLOAD_TOO_LARGE",
-                message=f"Request payload exceeds maximum allowed size of {self.max_size_bytes} bytes.",
+                message=(
+                    f"Request payload exceeds maximum allowed size of "
+                    f"{self.max_size_bytes} bytes."
+                ),
                 details={
                     "bytes_received": exc.bytes_received,
                     "max_size_bytes": self.max_size_bytes,

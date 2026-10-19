@@ -1,4 +1,5 @@
 import pytest
+
 from app.infrastructure.repositories.memory import InMemoryDocumentRepository
 from tests.contract.test_repository_contract import BaseDocumentRepositoryContractTest
 

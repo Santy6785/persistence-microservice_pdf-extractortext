@@ -4,6 +4,7 @@ DTOs (Data Transfer Objects) para la capa de aplicación.
 
 from dataclasses import dataclass, field
 from typing import Any, Optional
+
 from app.domain.models import Document
 
 

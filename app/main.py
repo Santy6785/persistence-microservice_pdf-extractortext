@@ -4,6 +4,7 @@ Punto de entrada principal para la aplicación FastAPI del microservicio persist
 
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
+
 from fastapi import FastAPI
 
 from app.api.error_handlers import register_error_handlers
@@ -35,10 +36,8 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # 1. Middlewares (en orden inverso de ejecución: RequestSizeLimit evalúa antes, RequestId propaga ID)
-    app.add_middleware(
-        RequestSizeLimitMiddleware, max_size_bytes=settings.max_payload_size_bytes
-    )
+    # 1. Middlewares (RequestSizeLimit evalúa antes, RequestId propaga ID)
+    app.add_middleware(RequestSizeLimitMiddleware, max_size_bytes=settings.max_payload_size_bytes)
     app.add_middleware(RequestIdMiddleware)
 
     # 2. Manejadores de error uniformes

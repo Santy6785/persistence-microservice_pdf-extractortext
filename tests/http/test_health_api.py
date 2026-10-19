@@ -1,8 +1,9 @@
 import pytest
-from httpx import ASGITransport, AsyncClient
 from fastapi import FastAPI
-from app.main import create_app
+from httpx import ASGITransport, AsyncClient
+
 from app.api.health import check_db_health
+from app.main import create_app
 
 
 @pytest.fixture

@@ -1,13 +1,15 @@
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 import pytest
-from app.domain.models import Document
+
 from app.domain.exceptions import DocumentAlreadyExistsError
+from app.domain.models import Document
 from app.domain.repositories import DocumentRepository
 
 
 class BaseDocumentRepositoryContractTest(ABC):
-    """Batería común de tests para verificar que cualquier implementación de DocumentRepository cumple el contrato."""
+    """Batería común de tests para verificar el cumplimiento del contrato DocumentRepository."""
 
     @abstractmethod
     async def get_repository(self) -> DocumentRepository:

@@ -3,6 +3,7 @@ Gestión de conexión y sesiones asíncronas de SQLAlchemy.
 """
 
 from typing import AsyncGenerator
+
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
