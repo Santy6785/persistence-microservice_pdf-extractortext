@@ -37,17 +37,20 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Copiar el código fuente y las migraciones de Alembic
+# Copiar el código fuente, las migraciones de Alembic y el script de entrypoint
 COPY app/ /app/app/
 COPY migrations/ /app/migrations/
 COPY alembic.ini /app/alembic.ini
+COPY entrypoint.sh /app/entrypoint.sh
 
-# Cambiar permisos al usuario no root
-RUN chown -R appuser:appuser /app
+# Asegurar permisos de ejecución para entrypoint y usuario no root
+RUN chmod +x /app/entrypoint.sh && \
+    chown -R appuser:appuser /app
 
 # Cambiar a usuario no root
 USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
