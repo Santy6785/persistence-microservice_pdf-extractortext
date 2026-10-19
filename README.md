@@ -62,7 +62,7 @@ Variables disponibles:
 | `APP_HOST` | Host de enlace | `0.0.0.0` |
 | `LOG_LEVEL` | Nivel de logs | `INFO` |
 | `MAX_PAYLOAD_SIZE_BYTES` | Límite máximo de payload aceptado | `26214400` (25 MB) |
-| `DATABASE_URL` | Cadena de conexión asíncrona a PostgreSQL | `postgresql+asyncpg://postgres:postgres@localhost:5432/persistence_db` |
+| `DATABASE_URL` | Cadena de conexi?n as?ncrona a PostgreSQL | Configurada mediante `.env` |
 
 ---
 
@@ -98,6 +98,19 @@ docker build -t persistence:latest .
 # Ejecutar contenedor
 docker run -p 8000:8000 --env-file .env persistence:latest
 ```
+
+Al iniciar la imagen, se ejecuta `python -m alembic upgrade head` antes de iniciar Uvicorn. Si las migraciones fallan, el contenedor no inicia el servicio.
+
+### Entorno de desarrollo con Docker Compose
+Desde el directorio `persistence`, copiar `.env.example` a `.env` y reemplazar `POSTGRES_PASSWORD` por una contraseña local:
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+docker compose ps
+```
+
+Compose levanta PostgreSQL 16 con un volumen persistente y espera su healthcheck antes de iniciar `persistence`. El puerto publicado es el de la API (`APP_PORT`, por defecto `8000`); PostgreSQL no se publica en el host. La migración se ejecuta al iniciar cada réplica de `persistence`: no escales este servicio a varias réplicas con este esquema, porque no hay coordinación entre migradores. En despliegues con varias réplicas, ejecutá la migración una sola vez como paso previo al despliegue.
 
 ---
 
