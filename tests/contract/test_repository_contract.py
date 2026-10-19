@@ -95,6 +95,38 @@ class BaseDocumentRepositoryContractTest(ABC):
         assert exc_info.value.checksum == checksum
         assert exc_info.value.existing_id == doc1.id
 
+    async def test_save_duplicate_checksum_concurrent_asyncio_gather(self):
+        import asyncio
+
+        repo = await self.get_repository()
+        checksum = "f" * 64
+
+        doc1 = self._create_sample_document(
+            doc_id="66666666-6666-6666-6666-666666666666",
+            checksum=checksum,
+            filename="concurrent_1.pdf",
+        )
+        doc2 = self._create_sample_document(
+            doc_id="77777777-7777-7777-7777-777777777777",
+            checksum=checksum,
+            filename="concurrent_2.pdf",
+        )
+
+        results = await asyncio.gather(
+            repo.save(doc1),
+            repo.save(doc2),
+            return_exceptions=True,
+        )
+
+        successes = [r for r in results if isinstance(r, Document)]
+        errors = [r for r in results if isinstance(r, DocumentAlreadyExistsError)]
+
+        # Exactamente una inserción debe triunfar y la otra debe fallar por duplicado
+        assert len(successes) == 1
+        assert len(errors) == 1
+        assert errors[0].checksum == checksum
+        assert errors[0].existing_id == successes[0].id
+
     async def test_list_paginated_ordering_created_at_desc_id_asc(self):
         repo = await self.get_repository()
         base_time = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
