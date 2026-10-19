@@ -7,6 +7,7 @@ from typing import AsyncGenerator
 from fastapi import FastAPI
 
 from app.api.error_handlers import register_error_handlers
+from app.api.health import router as health_router
 from app.api.middlewares import RequestIdMiddleware, RequestSizeLimitMiddleware
 from app.api.v1.router import api_v1_router
 from app.config import get_settings
@@ -44,6 +45,7 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
 
     # 3. Registro de routers
+    app.include_router(health_router)
     app.include_router(api_v1_router)
 
     return app
