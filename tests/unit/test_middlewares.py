@@ -19,6 +19,10 @@ def app_with_middlewares() -> FastAPI:
         req_id = getattr(request.state, "request_id", "none")
         return JSONResponse({"status": "ok", "size": len(body), "request_id": req_id})
 
+    @app.post("/test-json")
+    async def upload_json(payload: dict):
+        return JSONResponse({"status": "ok", "keys": list(payload)})
+
     return app
 
 
@@ -78,3 +82,20 @@ async def test_payload_rejected_by_streaming_stream_without_content_length_413(
         assert resp.status_code == 413
         data = resp.json()
         assert data["error"]["code"] == "PAYLOAD_TOO_LARGE"
+
+
+async def test_oversized_chunked_json_is_413_not_body_parse_error(
+    app_with_middlewares: FastAPI,
+):
+    transport = ASGITransport(app=app_with_middlewares)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+
+        async def chunk_generator():
+            yield b'{"value":"'
+            yield b"a" * 1100
+            yield b'"}'
+
+        resp = await client.post("/test-json", content=chunk_generator())
+
+    assert resp.status_code == 413
+    assert resp.json()["error"]["code"] == "PAYLOAD_TOO_LARGE"

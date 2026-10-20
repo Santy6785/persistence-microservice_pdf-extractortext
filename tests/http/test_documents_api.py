@@ -1,3 +1,6 @@
+import json
+import logging
+
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -28,7 +31,9 @@ async def client(test_app: FastAPI):
         yield ac
 
 
-async def test_create_document_success(client: AsyncClient):
+async def test_create_document_success(client: AsyncClient, caplog: pytest.LogCaptureFixture):
+    caplog.set_level(logging.INFO)
+    request_id = "document-create-201"
     payload = {
         "checksum_sha256": "A" * 64,  # Mayúsculas: debe normalizarse a minúsculas
         "filename": "informe.pdf",
@@ -37,7 +42,11 @@ async def test_create_document_success(client: AsyncClient):
         "file_size_bytes": 1024,
         "metadata": {"author": "Tester"},
     }
-    resp = await client.post("/api/v1/documents", json=payload)
+    resp = await client.post(
+        "/api/v1/documents",
+        json=payload,
+        headers={"X-Request-ID": request_id},
+    )
     assert resp.status_code == 201
     data = resp.json()
     assert "id" in data
@@ -46,11 +55,42 @@ async def test_create_document_success(client: AsyncClient):
     assert data["extracted_text"] == "Texto extraído secreto"
     assert resp.headers.get("Location") == f"/api/v1/documents/{data['id']}"
 
+    logs = [
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if record.name == "persistence.events"
+    ]
+    create_logs = [entry for entry in logs if entry["event"] == "document_created"]
+    assert len(create_logs) == 1
+    create_log = create_logs[0]
+    assert create_log["timestamp"]
+    assert create_log["level"] == "INFO"
+    assert create_log["service"] == "persistence"
+    assert create_log["request_id"] == request_id
+    assert create_log["document_id"] == data["id"]
+    assert create_log["checksum"] == "a" * 64
+    assert create_log["filename"] == "informe.pdf"
+    assert create_log["text_length"] == len(payload["extracted_text"])
+    assert set(create_log) == {
+        "timestamp",
+        "level",
+        "service",
+        "request_id",
+        "event",
+        "document_id",
+        "checksum",
+        "filename",
+        "text_length",
+    }
+    assert payload["extracted_text"] not in caplog.text
+
 
 async def test_create_document_duplicate_returns_409_uniform_without_extracted_text(
-    client: AsyncClient,
+    client: AsyncClient, caplog: pytest.LogCaptureFixture
 ):
+    caplog.set_level(logging.INFO)
     secret_text = "CONFIDENTIAL_PAYROLL_DATA_DO_NOT_LEAK"
+    request_id = "duplicate-request-409"
     payload = {
         "checksum_sha256": "c" * 64,
         "filename": "payroll.pdf",
@@ -66,7 +106,11 @@ async def test_create_document_duplicate_returns_409_uniform_without_extracted_t
         "filename": "payroll_duplicate.pdf",
         "extracted_text": secret_text,
     }
-    resp2 = await client.post("/api/v1/documents", json=payload_dup)
+    resp2 = await client.post(
+        "/api/v1/documents",
+        json=payload_dup,
+        headers={"X-Request-ID": request_id},
+    )
     assert resp2.status_code == 409
     data = resp2.json()
 
@@ -75,6 +119,20 @@ async def test_create_document_duplicate_returns_409_uniform_without_extracted_t
     assert data["error"]["details"]["checksum"] == "c" * 64
     # Garantía estricta: NO debe contener el texto extraído en ningún campo del error
     assert secret_text not in resp2.text
+
+    logs = [
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if record.name == "persistence.events"
+    ]
+    conflict_logs = [entry for entry in logs if entry["event"] == "document_conflict"]
+    assert len(conflict_logs) == 1
+    conflict_log = conflict_logs[0]
+    assert conflict_log["service"] == "persistence"
+    assert conflict_log["request_id"] == request_id
+    assert conflict_log["checksum"] == "c" * 64
+    assert conflict_log["document_id"] == created_id
+    assert secret_text not in caplog.text
 
 
 async def test_create_document_validation_errors_422(client: AsyncClient):
@@ -232,12 +290,19 @@ async def test_nonexistent_route_returns_404_uniform(client: AsyncClient):
     assert data["error"]["request_id"] is not None
 
 
-async def test_500_error_does_not_leak_extracted_text(test_app: FastAPI):
+async def test_500_error_does_not_leak_extracted_text(
+    test_app: FastAPI, caplog: pytest.LogCaptureFixture
+):
+    caplog.set_level(logging.ERROR)
+    request_id = "infrastructure-request-500"
+    secret_text = "SECRET_DO_NOT_LEAK"
+    connection_url = "postgresql+asyncpg://user:private-password@database:5432/private"
+
     # Repositorio mock que falla con error de infraestructura
     class BrokenRepository(InMemoryDocumentRepository):
         async def save(self, document: Document) -> Document:
             raise PersistenceInfrastructureError(
-                "Database crash with raw sql containing text: SECRET_DO_NOT_LEAK"
+                f"Database crash with extracted_text={secret_text} and {connection_url}"
             )
 
     test_app.dependency_overrides[get_document_repository] = lambda: BrokenRepository()
@@ -248,10 +313,24 @@ async def test_500_error_does_not_leak_extracted_text(test_app: FastAPI):
             json={
                 "checksum_sha256": "9" * 64,
                 "filename": "fail.pdf",
-                "extracted_text": "SECRET_DO_NOT_LEAK",
+                "extracted_text": secret_text,
             },
+            headers={"X-Request-ID": request_id},
         )
         assert resp.status_code == 500
         data = resp.json()
         assert data["error"]["code"] == "PERSISTENCE_INFRASTRUCTURE_ERROR"
-        assert "SECRET_DO_NOT_LEAK" not in resp.text
+        assert secret_text not in resp.text
+
+    logs = [
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if record.name == "persistence.events"
+    ]
+    failure_logs = [
+        entry for entry in logs if entry["event"] == "persistence_infrastructure_failure"
+    ]
+    assert len(failure_logs) == 1
+    assert failure_logs[0]["request_id"] == request_id
+    assert secret_text not in caplog.text
+    assert connection_url not in caplog.text

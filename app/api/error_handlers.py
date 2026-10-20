@@ -17,8 +17,7 @@ from app.domain.exceptions import (
     DocumentNotFoundError,
     PersistenceInfrastructureError,
 )
-
-logger = logging.getLogger("persistence.error_handlers")
+from app.observability import log_event
 
 
 def build_error_payload(
@@ -88,6 +87,13 @@ async def document_already_exists_handler(
 ) -> JSONResponse:
     """Mapea DocumentAlreadyExistsError a 409 con formato uniforme (sin filtrar texto)."""
     req_id = _get_request_id(request)
+    log_event(
+        "document_conflict",
+        level=logging.WARNING,
+        request_id=req_id,
+        document_id=exc.existing_id,
+        checksum=exc.checksum,
+    )
     payload = build_error_payload(
         code="DOCUMENT_ALREADY_EXISTS",
         message="A document with the provided checksum already exists.",
@@ -120,7 +126,11 @@ async def persistence_infrastructure_handler(
 ) -> JSONResponse:
     """Mapea fallas de infraestructura de persistencia a 500 uniforme sin exponer secretos."""
     req_id = _get_request_id(request)
-    logger.error("Persistence infrastructure failure [req_id=%s]: %s", req_id, str(exc))
+    log_event(
+        "persistence_infrastructure_failure",
+        level=logging.ERROR,
+        request_id=req_id,
+    )
     payload = build_error_payload(
         code="PERSISTENCE_INFRASTRUCTURE_ERROR",
         message="A database or infrastructure failure occurred.",
@@ -133,7 +143,7 @@ async def persistence_infrastructure_handler(
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Mapea cualquier excepción inesperada a 500 uniforme."""
     req_id = _get_request_id(request)
-    logger.error("Unhandled exception [req_id=%s]: %s", req_id, str(exc), exc_info=True)
+    log_event("unhandled_exception", level=logging.ERROR, request_id=req_id)
     payload = build_error_payload(
         code="INTERNAL_SERVER_ERROR",
         message="An unexpected internal server error occurred.",

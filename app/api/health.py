@@ -11,8 +11,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.api.dependencies import get_session_factory
+from app.observability import log_event
 
-logger = logging.getLogger("persistence.health")
 router = APIRouter(prefix="/health", tags=["Health"])
 
 
@@ -23,8 +23,8 @@ async def check_db_health() -> bool:
         async with session_factory() as session:
             await session.execute(text("SELECT 1;"))
         return True
-    except Exception as exc:
-        logger.warning("Database connectivity health check failed: %s", exc)
+    except Exception:
+        log_event("database_health_check_failed", level=logging.WARNING)
         return False
 
 

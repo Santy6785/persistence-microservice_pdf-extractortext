@@ -11,6 +11,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.api.error_handlers import build_error_payload
+from app.observability import bind_request_id, reset_request_id
 
 
 class PayloadTooLargeException(Exception):
@@ -43,6 +44,7 @@ class RequestIdMiddleware:
         if "state" not in scope:
             scope["state"] = {}
         scope["state"]["request_id"] = request_id
+        request_id_token = bind_request_id(request_id)
 
         async def send_with_request_id(message: Message) -> None:
             if message["type"] == "http.response.start":
@@ -51,7 +53,10 @@ class RequestIdMiddleware:
                 message["headers"] = headers_list
             await send(message)
 
-        await self.app(scope, receive, send_with_request_id)
+        try:
+            await self.app(scope, receive, send_with_request_id)
+        finally:
+            reset_request_id(request_id_token)
 
 
 class RequestSizeLimitMiddleware:
@@ -71,7 +76,9 @@ class RequestSizeLimitMiddleware:
             return
 
         headers = Headers(scope=scope)
-        request_id = headers.get("x-request-id", "unknown")
+        request_id = scope.get("state", {}).get(
+            "request_id", headers.get("x-request-id", "unknown")
+        )
 
         content_length_str = headers.get("content-length")
         if content_length_str:
@@ -97,20 +104,32 @@ class RequestSizeLimitMiddleware:
                 pass
 
         bytes_received = 0
+        oversized_exception: PayloadTooLargeException | None = None
 
         async def stream_limiting_receive() -> Message:
-            nonlocal bytes_received
+            nonlocal bytes_received, oversized_exception
             message = await receive()
             if message["type"] == "http.request":
                 chunk = message.get("body", b"")
                 bytes_received += len(chunk)
                 if bytes_received > self.max_size_bytes:
-                    raise PayloadTooLargeException(bytes_received, self.max_size_bytes)
+                    oversized_exception = PayloadTooLargeException(
+                        bytes_received, self.max_size_bytes
+                    )
+                    raise oversized_exception
             return message
 
+        async def send_unless_oversized(message: Message) -> None:
+            if oversized_exception is None:
+                await send(message)
+
         try:
-            await self.app(scope, stream_limiting_receive, send)
+            await self.app(scope, stream_limiting_receive, send_unless_oversized)
         except PayloadTooLargeException as exc:
+            if exc is not oversized_exception:
+                raise
+
+        if oversized_exception is not None:
             state_req_id = scope.get("state", {}).get("request_id", request_id)
             payload = build_error_payload(
                 code="PAYLOAD_TOO_LARGE",
@@ -119,7 +138,7 @@ class RequestSizeLimitMiddleware:
                     f"{self.max_size_bytes} bytes."
                 ),
                 details={
-                    "bytes_received": exc.bytes_received,
+                    "bytes_received": oversized_exception.bytes_received,
                     "max_size_bytes": self.max_size_bytes,
                 },
                 request_id=state_req_id,

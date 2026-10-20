@@ -16,6 +16,7 @@ from app.api.schemas import (
 )
 from app.application.document_service import DocumentService
 from app.application.dtos import CreateDocumentDTO
+from app.observability import log_event
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -40,6 +41,13 @@ async def create_document(
         metadata=request.metadata,
     )
     doc = await service.create_document(dto)
+    log_event(
+        "document_created",
+        document_id=doc.id,
+        checksum=doc.checksum_sha256,
+        filename=doc.filename,
+        text_length=len(doc.extracted_text),
+    )
     response.headers["Location"] = f"/api/v1/documents/{doc.id}"
     return DocumentResponse.from_entity(doc)
 
