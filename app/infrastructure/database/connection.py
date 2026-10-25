@@ -7,7 +7,7 @@ Los timeouts son configurables por variables de entorno (vía pydantic-settings)
 
 from typing import Optional
 
-from pymongo import AsyncMongoClient
+from pymongo import ASCENDING, DESCENDING, AsyncMongoClient
 from pymongo.errors import PyMongoError
 
 from app.config import get_settings
@@ -56,3 +56,26 @@ async def ping() -> bool:
         return True
     except PyMongoError:
         return False
+
+
+async def ensure_indexes() -> None:
+    """Crea los índices requeridos en la colección de documentos.
+
+    - Índice único en `checksum_sha256` (garantiza unicidad estricta del checksum).
+    - Índice compuesto en `(created_at DESC, _id ASC)` (soporta el orden
+      determinista de list_paginated).
+
+    Si alguna creación falla, la excepción se propaga: el arranque de la
+    aplicación debe fallar si los índices no pueden crearse.
+    """
+    client = get_client()
+    collection = client[get_database_name()]["documents"]
+    await collection.create_index(
+        "checksum_sha256",
+        unique=True,
+        name="uq_checksum_sha256",
+    )
+    await collection.create_index(
+        [("created_at", DESCENDING), ("_id", ASCENDING)],
+        name="ix_created_at_id",
+    )

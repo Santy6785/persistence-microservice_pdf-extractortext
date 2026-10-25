@@ -14,6 +14,12 @@ async def test_lifespan_creates_and_closes_mongo_client(monkeypatch, caplog):
     class FakeClient:
         closed = False
 
+        def __getitem__(self, name):
+            return self
+
+        async def create_index(self, *args, **kwargs):
+            return None
+
         async def close(self):
             self.closed = True
 
@@ -21,6 +27,7 @@ async def test_lifespan_creates_and_closes_mongo_client(monkeypatch, caplog):
 
     monkeypatch.setattr(connection, "get_client", lambda: fake)
     monkeypatch.setattr(connection, "_client", fake)
+    monkeypatch.setattr(connection, "ensure_indexes", lambda: None)
 
     async def fake_close():
         fake.closed = True

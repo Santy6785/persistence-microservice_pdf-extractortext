@@ -12,7 +12,11 @@ from app.api.health import router as health_router
 from app.api.middlewares import RequestIdMiddleware, RequestSizeLimitMiddleware
 from app.api.v1.router import api_v1_router
 from app.config import get_settings
-from app.infrastructure.database.connection import close_client, get_client
+from app.infrastructure.database.connection import (
+    close_client,
+    ensure_indexes,
+    get_client,
+)
 from app.observability import configure_logging, log_event
 
 
@@ -25,6 +29,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     configure_logging()
     # Crear cliente singleton de Mongo al arrancar (conexión perezosa; se valida en health).
     get_client()
+    # Crear índices obligatorios al arrancar. Si falla, el arranque falla.
+    await ensure_indexes()
+    log_event("mongodb_indexes_ensured")
     yield
     # Cerrar el cliente de MongoDB al apagar el servicio
     await close_client()
