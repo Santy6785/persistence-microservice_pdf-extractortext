@@ -3,7 +3,13 @@ import pytest
 from app.config import Settings, get_settings
 
 
-def test_default_settings():
+def test_default_settings(monkeypatch: pytest.MonkeyPatch):
+    # get_settings() usa lru_cache: invalida para leer el entorno actual
+    # (sin variables de Mongo de pruebas previas).
+    get_settings.cache_clear()
+    for var in ["MONGODB_URI", "MONGODB_DB"]:
+        monkeypatch.delenv(var, raising=False)
+
     settings = Settings()
     assert settings.app_env in ["development", "production", "test"]
     assert settings.app_port == 8000

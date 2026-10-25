@@ -2,81 +2,61 @@ import os
 
 import pytest
 
+from app.config import get_settings
+from app.infrastructure.database import connection
+from app.infrastructure.database.connection import ensure_indexes
 from app.infrastructure.repositories.mongo import MongoDocumentRepository
 from tests.contract.test_repository_contract import BaseDocumentRepositoryContractTest
 
 
-def _docker_available() -> bool:
-    """Verifica si el demonio de Docker responde (necesario para testcontainers)."""
+@pytest.fixture(scope="class")
+def mongo_container():
+    """Levanta un contenedor mongo:7 efímero. Se saltea si no hay Docker/Mongo."""
+    from testcontainers.community.mongodb import MongoDbContainer
+
     try:
-        import docker
+        container = MongoDbContainer("mongo:7")
+        container.start()
+    except Exception as exc:  # noqa: BLE001 - no hay Docker o no hay Mongo
+        pytest.skip(f"No se pudo levantar Mongo (¿Docker activo?): {exc}")
+    yield container
+    try:
+        container.stop()
+    except Exception:  # noqa: BLE001 - mejor esfuerzo al apagar
+        pass
 
-        client = docker.from_env()
-        client.ping()
-        return True
-    except Exception:
-        return False
+
+@pytest.fixture(autouse=True)
+def mongo_env(mongo_container, monkeypatch: pytest.MonkeyPatch):
+    """Setea MONGODB_URI / MONGODB_DB solo durante la prueba y revierte después.
+
+    Además invalida el cache de get_settings() y resetea el cliente singleton
+    de MongoDB para que se cree en el event loop del test actual (pytest-asyncio
+    usa un loop distinto por test, y AsyncMongoClient se vincula a un solo loop).
+    """
+    monkeypatch.setenv("MONGODB_URI", mongo_container.get_connection_url())
+    monkeypatch.setenv("MONGODB_DB", mongo_container.dbname)
+    get_settings.cache_clear()
+    monkeypatch.setattr(connection, "_client", None)
 
 
-if not _docker_available():
-    pytest.skip(
-        "Docker no está disponible; se salta el contrato contra Mongo hasta que "
-        "haya un contenedor mongo:7 levantable.",
-        allow_module_level=True,
-    )
+@pytest.fixture(autouse=True)
+async def clean_collection(mongo_env):
+    """Limpia la colección antes y después de cada test.
+
+    Depende de mongo_env para asegurar que MONGODB_DB ya esté seteado.
+    """
+    client = connection.get_client()
+    db = client[os.environ["MONGODB_DB"]]
+    await db["documents"].delete_many({})
+    await ensure_indexes()
+    yield
+    await db["documents"].delete_many({})
 
 
 @pytest.mark.integration
 class TestMongoDocumentRepository(BaseDocumentRepositoryContractTest):
     """Ejecución de la suite de contrato contra MongoDB real (contenedor efímero)."""
-
-    _container = None
-    _client = None
-
-    @classmethod
-    def setup_class(cls):
-        import asyncio
-
-        from pymongo import AsyncMongoClient
-        from testcontainers.community.mongodb import MongoDbContainer
-
-        cls._container = MongoDbContainer("mongo:7")
-        cls._container.start()
-
-        uri = cls._container.get_connection_url()
-        db_name = cls._container.dbname
-
-        os.environ["MONGODB_URI"] = uri
-        os.environ["MONGODB_DB"] = db_name
-
-        async def _init() -> None:
-            cls._client = AsyncMongoClient(
-                uri,
-                serverSelectionTimeoutMS=5000,
-                connectTimeoutMS=5000,
-                socketTimeoutMS=20000,
-            )
-            # Forzar conexión para validar disponibilidad antes de los tests.
-            await cls._client.admin.command("ping")
-
-        asyncio.run(_init())
-
-    @classmethod
-    def teardown_class(cls):
-        import asyncio
-
-        if cls._client:
-            asyncio.run(cls._client.close())
-        if cls._container:
-            cls._container.stop()
-
-    @pytest.fixture(autouse=True)
-    async def clean_collection(self):
-        db_name = os.environ.get("MONGODB_DB", "persistence_db")
-        db = self._client[db_name]
-        await db["documents"].delete_many({})
-        yield
-        await db["documents"].delete_many({})
 
     async def get_repository(self) -> MongoDocumentRepository:
         return MongoDocumentRepository()

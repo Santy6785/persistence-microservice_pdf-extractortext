@@ -53,12 +53,16 @@ class MongoDocumentRepository(DocumentRepository):
 
     @staticmethod
     def _to_entity(doc: dict) -> Document:
-        """Convierte un documento de BSON de MongoDB en una entidad de dominio."""
+        """Convierte un documento de BSON de MongoDB en una entidad de dominio.
+
+        `extracted_text` se lee con .get() porque list_paginated lo proyecta
+        fuera (proyección {"extracted_text": 0}); en ese caso se devuelve "".
+        """
         return Document(
             id=doc["_id"],
             checksum_sha256=doc["checksum_sha256"],
             filename=doc["filename"],
-            extracted_text=doc["extracted_text"],
+            extracted_text=doc.get("extracted_text", ""),
             page_count=doc.get("page_count"),
             file_size_bytes=doc.get("file_size_bytes"),
             metadata=doc.get("metadata", {}) or {},
