@@ -1,5 +1,6 @@
 """
 Inyección de dependencias para los endpoints de FastAPI.
+Provee el repositorio de persistencia (MongoDB) y el servicio de aplicación.
 """
 
 from typing import Annotated
@@ -7,29 +8,33 @@ from typing import Annotated
 from fastapi import Depends
 
 from app.application.document_service import DocumentService
-from app.config import get_settings
 from app.domain.repositories import DocumentRepository
-from app.infrastructure.database.connection import create_engine, create_session_factory
-from app.infrastructure.repositories.postgres import PostgresDocumentRepository
+from app.infrastructure.database.connection import get_database_name
+from app.infrastructure.repositories.mongo import MongoDocumentRepository
 
-# Engine y session factory singleton para runtime
-_engine = None
-_session_factory = None
+# Cliente singleton de MongoDB (creado en el lifespan, reutilizado aquí).
+_client = None
 
 
-def get_session_factory():
-    global _engine, _session_factory
-    if _session_factory is None:
-        settings = get_settings()
-        _engine = create_engine(settings.database_url)
-        _session_factory = create_session_factory(_engine)
-    return _session_factory
+def get_client():
+    """Retorna el cliente singleton de MongoDB (sobrescribible en tests)."""
+    global _client
+    if _client is None:
+        from app.infrastructure.database.connection import get_client as _gc
+
+        _client = _gc()
+    return _client
+
+
+def get_collection():
+    """Provee la colección de MongoDB sobre la que operan los repositorios."""
+    client = get_client()
+    return client[get_database_name()]["documents"]
 
 
 def get_document_repository() -> DocumentRepository:
     """Provee la instancia del repositorio de persistencia (sobrescribible en tests)."""
-    session_factory = get_session_factory()
-    return PostgresDocumentRepository(session_factory=session_factory)
+    return MongoDocumentRepository()
 
 
 def get_document_service(

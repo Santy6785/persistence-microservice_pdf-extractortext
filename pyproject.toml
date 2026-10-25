@@ -9,9 +9,7 @@ dependencies = [
     "uvicorn[standard]>=0.30.0",
     "pydantic>=2.9.0",
     "pydantic-settings>=2.5.0",
-    "sqlalchemy[asyncio]>=2.0.0",
-    "asyncpg>=0.29.0",
-    "alembic>=1.13.0",
+    "pymongo>=4.0.0",
 ]
 
 [dependency-groups]
@@ -29,7 +27,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
 markers = [
-    "integration: tests de integración que requieren Docker / PostgreSQL real",
+    "integration: tests de integración que requieren Docker / MongoDB real",
 ]
 
 [tool.ruff]

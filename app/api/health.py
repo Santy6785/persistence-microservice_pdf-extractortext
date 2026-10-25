@@ -8,21 +8,20 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
 
-from app.api.dependencies import get_session_factory
+from app.infrastructure.database.connection import ping
 from app.observability import log_event
 
 router = APIRouter(prefix="/health", tags=["Health"])
 
 
 async def check_db_health() -> bool:
-    """Ejecuta una consulta liviana (SELECT 1) para comprobar conectividad activa a la base."""
+    """Ejecuta un ping liviano contra MongoDB para comprobar conectividad activa."""
     try:
-        session_factory = get_session_factory()
-        async with session_factory() as session:
-            await session.execute(text("SELECT 1;"))
-        return True
+        is_healthy = await ping()
+        if not is_healthy:
+            log_event("database_health_check_failed", level=logging.WARNING)
+        return is_healthy
     except Exception:
         log_event("database_health_check_failed", level=logging.WARNING)
         return False

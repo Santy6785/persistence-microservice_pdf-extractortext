@@ -3,35 +3,38 @@ import logging
 
 from fastapi import FastAPI
 
-from app.api import dependencies
+import app.infrastructure.database.connection as connection
 from app.main import lifespan
 
 
-async def test_lifespan_disposes_database_engine_on_shutdown(monkeypatch, caplog):
+async def test_lifespan_creates_and_closes_mongo_client(monkeypatch, caplog):
+    """El lifespan crea el cliente singleton de Mongo al entrar y lo cierra al salir."""
     caplog.set_level(logging.INFO)
 
-    class FakeEngine:
-        disposed = False
+    class FakeClient:
+        closed = False
 
-        async def dispose(self):
-            self.disposed = True
+        async def close(self):
+            self.closed = True
 
-    engine = FakeEngine()
-    monkeypatch.setattr(dependencies, "_engine", engine)
+    fake = FakeClient()
+
+    monkeypatch.setattr(connection, "get_client", lambda: fake)
+    monkeypatch.setattr(connection, "_client", fake)
+
+    async def fake_close():
+        fake.closed = True
+        connection._client = None
+
+    monkeypatch.setattr(connection, "close_client", fake_close)
 
     async with lifespan(FastAPI()):
-        assert engine.disposed is False
+        assert fake.closed is False
 
-    assert engine.disposed is True
+    assert fake.closed is True
     logs = [
         json.loads(record.getMessage())
         for record in caplog.records
         if record.name == "persistence.events"
     ]
-    assert any(entry["event"] == "database_engine_disposed" for entry in logs), (
-        f"events={logs!r}, logger_level={logging.getLogger('persistence.events').level}, "
-        f"propagate={logging.getLogger('persistence.events').propagate}, "
-        f"disabled={logging.getLogger('persistence.events').disabled}, "
-        f"enabled={logging.getLogger('persistence.events').isEnabledFor(logging.INFO)}, "
-        f"disable_threshold={logging.root.manager.disable}, root_level={logging.root.level}"
-    )
+    assert any(entry["event"] == "mongodb_client_closed" for entry in logs), logs

@@ -1,16 +1,15 @@
-"""Submódulo de base de datos relacional."""
+"""Submódulo de conexión a MongoDB."""
 
 from app.infrastructure.database.connection import (
-    create_engine,
-    create_session_factory,
-    get_db_session,
+    close_client,
+    get_client,
+    get_database_name,
+    ping,
 )
-from app.infrastructure.database.models import Base, DocumentORM
 
 __all__ = [
-    "Base",
-    "DocumentORM",
-    "create_engine",
-    "create_session_factory",
-    "get_db_session",
+    "get_client",
+    "close_client",
+    "get_database_name",
+    "ping",
 ]
