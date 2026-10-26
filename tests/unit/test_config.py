@@ -10,7 +10,7 @@ def test_default_settings(monkeypatch: pytest.MonkeyPatch):
     for var in ["MONGODB_URI", "MONGODB_DB"]:
         monkeypatch.delenv(var, raising=False)
 
-    settings = Settings()
+    settings = Settings(_env_file=None)
     assert settings.app_env in ["development", "production", "test"]
     assert settings.app_port == 8000
     assert settings.app_host == "0.0.0.0"
@@ -30,7 +30,7 @@ def test_settings_override_via_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("MAX_PAYLOAD_SIZE_BYTES", "10485760")
     monkeypatch.setenv("MONGODB_SERVER_SELECTION_TIMEOUT_MS", "3000")
 
-    settings = Settings()
+    settings = Settings(_env_file=None)
     assert settings.app_env == "production"
     assert settings.app_port == 9000
     assert settings.mongodb_uri == "mongodb://user:pass@db:27017/prod_db"
