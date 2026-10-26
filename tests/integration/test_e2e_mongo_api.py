@@ -60,13 +60,17 @@ async def clean_collection(mongo_env):
     client = connection.get_client()
     db = client[os.environ["MONGODB_DB"]]
     await db["documents"].delete_many({})
+    await connection.ensure_indexes()
     yield
     await db["documents"].delete_many({})
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 async def client():
     """Cliente HTTP de la app real conectada a Mongo real."""
+    from app.infrastructure.database.connection import ensure_indexes
+
+    await ensure_indexes()
     app = create_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
