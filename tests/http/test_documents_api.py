@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.api.dependencies import get_document_repository
+from app.config import get_settings
 from app.domain.exceptions import DocumentTooLargeError, PersistenceInfrastructureError
 from app.domain.models import Document
 from app.infrastructure.repositories.memory import InMemoryDocumentRepository
@@ -296,7 +297,7 @@ async def test_500_error_does_not_leak_extracted_text(
     caplog.set_level(logging.ERROR)
     request_id = "infrastructure-request-500"
     secret_text = "SECRET_DO_NOT_LEAK"
-    connection_url = "postgresql+asyncpg://user:private-password@database:5432/private"
+    connection_url = "mongodb://user:private-password@database:27017/private"
 
     # Repositorio mock que falla con error de infraestructura
     class BrokenRepository(InMemoryDocumentRepository):
@@ -367,3 +368,54 @@ async def test_document_too_large_returns_413_uniform_without_extracted_text(
         assert "exceeds maximum allowed size" in data["error"]["message"]
         # Garantía estricta: NO debe contener el texto extraído
         assert secret_text not in resp.text
+
+
+async def test_request_size_middleware_rejects_over_limit_413_uniform(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Body mayor a MAX_PAYLOAD_SIZE_BYTES devuelve 413 uniforme (Content-Length y chunked)."""
+
+    class _SmallSettings:
+        max_payload_size_bytes = 100
+        app_env = "development"
+        app_port = 8000
+        app_host = "0.0.0.0"
+        log_level = "INFO"
+        mongodb_uri = "mongodb://mongodb:27017"
+        mongodb_db = "persistence_db"
+        mongodb_collection = "documents"
+        mongodb_server_selection_timeout_ms = 5000
+        mongodb_connect_timeout_ms = 5000
+        mongodb_socket_timeout_ms = 20000
+
+    monkeypatch.setattr("app.config.get_settings", lambda: _SmallSettings())
+    get_settings.cache_clear()
+    monkeypatch.setattr("app.main.get_settings", lambda: _SmallSettings())
+
+    app = create_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Con Content-Length explícito mayor al límite
+        resp = await client.post(
+            "/api/v1/documents",
+            json={
+                "checksum_sha256": "a" * 64,
+                "filename": "x.pdf",
+                "extracted_text": "y" * 200,
+            },
+            headers={"content-length": "500"},
+        )
+        assert resp.status_code == 413
+        data = resp.json()
+        assert data["error"]["code"] == "PAYLOAD_TOO_LARGE"
+        assert data["error"]["request_id"] is not None
+
+        # Chunked (sin Content-Length), body mayor al límite
+        async def chunks():
+            yield b"a" * 200
+
+        resp2 = await client.post("/api/v1/documents", content=chunks())
+        assert resp2.status_code == 413
+        data2 = resp2.json()
+        assert data2["error"]["code"] == "PAYLOAD_TOO_LARGE"
+        assert data2["error"]["request_id"] is not None

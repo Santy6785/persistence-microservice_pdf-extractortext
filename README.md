@@ -9,9 +9,8 @@ Microservicio backend del sistema de extracción de texto de PDFs responsable ex
 - **Lenguaje:** Python 3.13+
 - **Framework Web:** FastAPI (asíncrono, ASGI)
 - **Gestor de Paquetes y Entorno:** `uv`
-- **Base de Datos:** PostgreSQL 16
-- **ORM / Driver:** SQLAlchemy 2.0 (asíncrono) + `asyncpg`
-- **Control de Esquema y Migraciones:** Alembic
+- **Base de Datos:** MongoDB 7
+- **ORM / Driver:** PyMongo async (`AsyncMongoClient`)
 - **Validación y Serialización:** Pydantic v2 (con `extra="forbid"`)
 - **Configuración:** `pydantic-settings`
 - **Testing:** Pytest, `pytest-asyncio`, `httpx`, `testcontainers`
@@ -34,8 +33,8 @@ app/
 │   ├── dtos.py              # DTOs de entrada y salida
 │   └── document_service.py  # Orquestación de reglas de negocio y UUID v4
 ├── infrastructure/          # Capa de Infraestructura técnica
-│   ├── database/            # Conexión asíncrona y modelo DocumentORM (SQLAlchemy)
-│   └── repositories/        # Implementaciones: PostgresDocumentRepository y InMemoryDocumentRepository
+│   ├── database/            # Conexión asíncrona a MongoDB (PyMongo async)
+│   └── repositories/        # Implementaciones: MongoDocumentRepository y InMemoryDocumentRepository
 └── api/                     # Capa de Presentación HTTP (FastAPI)
     ├── middlewares.py       # RequestIdMiddleware y RequestSizeLimitMiddleware (413 temprano)
     ├── error_handlers.py    # Formato uniforme de error para todo el servicio
@@ -62,7 +61,12 @@ Variables disponibles:
 | `APP_HOST` | Host de enlace | `0.0.0.0` |
 | `LOG_LEVEL` | Nivel de logs | `INFO` |
 | `MAX_PAYLOAD_SIZE_BYTES` | Límite máximo de payload aceptado | `14680064` (14 MB; margen bajo el límite BSON de 16 MB de MongoDB) |
-| `DATABASE_URL` | Cadena de conexi?n as?ncrona a PostgreSQL | Configurada mediante `.env` |
+| `MONGODB_URI` | Cadena de conexión a MongoDB | `mongodb://mongodb:27017` |
+| `MONGODB_DB` | Nombre de la base de datos | `persistence_db` |
+| `MONGODB_COLLECTION` | Nombre de la colección | `documents` |
+| `MONGODB_SERVER_SELECTION_TIMEOUT_MS` | Timeout de selección de servidor (ms) | `5000` |
+| `MONGODB_CONNECT_TIMEOUT_MS` | Timeout de conexión (ms) | `5000` |
+| `MONGODB_SOCKET_TIMEOUT_MS` | Timeout de socket (ms) | `20000` |
 
 ---
 
@@ -80,11 +84,6 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 uv sync
 ```
 
-### Aplicar migraciones de base de datos
-```bash
-uv run alembic upgrade head
-```
-
 ### Ejecutar en modo desarrollo
 ```bash
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -99,10 +98,10 @@ docker build -t persistence:latest .
 docker run -p 8000:8000 --env-file .env persistence:latest
 ```
 
-Al iniciar la imagen, se ejecuta `python -m alembic upgrade head` antes de iniciar Uvicorn. Si las migraciones fallan, el contenedor no inicia el servicio.
+Al iniciar el contenedor, la aplicación crea los índices de MongoDB requeridos (checksum_sha256 único, y orden created_at/_id) antes de recibir tráfico. Si falla la creación de índices, el contenedor no inicia el servicio.
 
 ### Entorno de desarrollo con Docker Compose
-Desde el directorio `persistence`, copiar `.env.example` a `.env` y reemplazar `POSTGRES_PASSWORD` por una contraseña local:
+Desde el directorio `persistence`, copiar `.env.example` a `.env` y reemplazar `MONGODB_ROOT_PASSWORD` por una contraseña local:
 
 ```bash
 cp .env.example .env
@@ -110,7 +109,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Compose levanta PostgreSQL 16 con un volumen persistente y espera su healthcheck antes de iniciar `persistence`. El puerto publicado es el de la API (`APP_PORT`, por defecto `8000`); PostgreSQL no se publica en el host. La migración se ejecuta al iniciar cada réplica de `persistence`: no escales este servicio a varias réplicas con este esquema, porque no hay coordinación entre migradores. En despliegues con varias réplicas, ejecutá la migración una sola vez como paso previo al despliegue.
+Compose levanta MongoDB 7 con un volumen persistente y espera su healthcheck (ping) antes de iniciar `persistence`. El puerto publicado es el de la API (`APP_PORT`, por defecto `8000`); MongoDB no se publica en el host. Las credenciales de Mongo solo viajan por variables de entorno, nunca se escriben en el repositorio.
 
 ---
 
@@ -118,8 +117,8 @@ Compose levanta PostgreSQL 16 con un volumen persistente y espera su healthcheck
 
 Toda la lógica fue construida siguiendo **TDD estricto**:
 - **Tests unitarios:** Pruebas puras de dominio, configuración y casos de uso con repositorio en memoria.
-- **Tests de contrato:** Batería compartida (`test_repository_contract.py`) ejecutada de manera idéntica contra `InMemoryDocumentRepository` y `PostgresDocumentRepository`.
-- **Tests de integración:** Utilizan `testcontainers[postgres]` para levantar un contenedor efímero de PostgreSQL 16 y verificar constraints ACID reales, concurrencia con `asyncio.gather` y migraciones con Alembic. Se saltan automáticamente si Docker no está activo.
+- **Tests de contrato:** Batería compartida (`test_repository_contract.py`) ejecutada de manera idéntica contra `InMemoryDocumentRepository` y `MongoDocumentRepository`.
+- **Tests de integración:** Utilizan `testcontainers[mongodb]` para levantar un contenedor efímero de MongoDB 7 y verificar constraints reales (índice único de checksum), concurrencia con `asyncio.gather` y creación de índices en el arranque. Se saltan automáticamente si Docker no está activo.
 - **Tests HTTP:** Validación de contratos, middlewares, códigos de estado y manejo uniforme de errores.
 
 ### Comandos de prueba con `uv`
@@ -131,7 +130,7 @@ uv run pytest -v
 # 2. Ejecutar únicamente tests rápidos (sin base de datos real)
 uv run pytest -m "not integration"
 
-# 3. Ejecutar tests de integración contra PostgreSQL real (requiere Docker)
+# 3. Ejecutar tests de integración contra MongoDB real (requiere Docker)
 uv run pytest -m "integration"
 
 # 4. Chequeo de calidad y formato con Ruff
@@ -167,7 +166,7 @@ Todas las respuestas de error (`4xx` y `5xx`) responden con la siguiente estruct
 | `GET` | `/api/v1/documents?skip=0&limit=20` | `200 OK` | Lista paginada determinista (`created_at DESC, id ASC`). **Excluye** `extracted_text`. |
 | `DELETE`| `/api/v1/documents/{id}` | `204 No Content` | Elimina el documento por UUID. |
 | `GET` | `/health/live` | `200 OK` | Liveness probe: confirma proceso vivo (`{"status": "alive"}`). |
-| `GET` | `/health/ready` | `200 OK` / `503` | Readiness probe: verifica conexión activa a Postgres (`SELECT 1`). |
+| `GET` | `/health/ready` | `200 OK` / `503` | Readiness probe: verifica conexión activa a MongoDB (`ping`). |
 
 ### Códigos de Error Principales
 - `404 Not Found` (`DOCUMENT_NOT_FOUND` / `NOT_FOUND`): Recurso o ruta no encontrada.

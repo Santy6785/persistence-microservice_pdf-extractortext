@@ -1,5 +1,5 @@
 # ==============================================================================
-# Multi-stage Dockerfile para el microservicio de persistencia (FastAPI + uv)
+# Dockerfile para el microservicio de persistencia (FastAPI + MongoDB + uv)
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
@@ -37,20 +37,15 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Copiar el código fuente, las migraciones de Alembic y el script de entrypoint
+# Copiar el código fuente
 COPY app/ /app/app/
-COPY migrations/ /app/migrations/
-COPY alembic.ini /app/alembic.ini
-COPY entrypoint.sh /app/entrypoint.sh
 
-# Asegurar permisos de ejecución para entrypoint y usuario no root
-RUN chmod +x /app/entrypoint.sh && \
-    chown -R appuser:appuser /app
+# Asegurar usuario no root
+RUN chown -R appuser:appuser /app
 
 # Cambiar a usuario no root
 USER appuser
 
 EXPOSE 8000
 
-ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

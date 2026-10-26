@@ -1,14 +1,13 @@
 services:
-  postgres:
-    image: postgres:16-alpine
+  mongodb:
+    image: mongo:7
     environment:
-      POSTGRES_DB: "${POSTGRES_DB:?Set POSTGRES_DB in .env}"
-      POSTGRES_USER: "${POSTGRES_USER:?Set POSTGRES_USER in .env}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+      MONGO_INITDB_ROOT_USERNAME: "${MONGODB_ROOT_USERNAME:?Set MONGODB_ROOT_USERNAME in .env}"
+      MONGO_INITDB_ROOT_PASSWORD: "${MONGODB_ROOT_PASSWORD:?Set MONGODB_ROOT_PASSWORD in .env}"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mongodb_data:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok' --username \"$${MONGODB_ROOT_USERNAME}\" --password \"$${MONGODB_ROOT_PASSWORD}\" --authenticationDatabase admin"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -19,11 +18,14 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:?Set POSTGRES_USER in .env}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB in .env}"
+      MONGODB_URI: "mongodb://${MONGODB_ROOT_USERNAME:?Set MONGODB_ROOT_USERNAME in .env}:${MONGODB_ROOT_PASSWORD:?Set MONGODB_ROOT_PASSWORD in .env}@mongodb:27017/?authSource=admin"
+      MONGODB_DB: "${MONGODB_DB:-persistence_db}"
+      MONGODB_COLLECTION: "${MONGODB_COLLECTION:-documents}"
+      MAX_PAYLOAD_SIZE_BYTES: "${MAX_PAYLOAD_SIZE_BYTES:-14680064}"
     ports:
       - "${APP_PORT:-8000}:8000"
     depends_on:
-      postgres:
+      mongodb:
         condition: service_healthy
     healthcheck:
       test:
@@ -35,10 +37,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    # labels:
-    #   - "traefik.enable=true"
-    #   - "traefik.http.routers.persistence.rule=Host(`persistence.localhost`)"
-    #   - "traefik.http.services.persistence.loadbalancer.server.port=8000"
 
 volumes:
-  postgres_data:
+  mongodb_data:
