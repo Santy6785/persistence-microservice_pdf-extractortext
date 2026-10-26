@@ -61,7 +61,7 @@ Variables disponibles:
 | `APP_PORT` | Puerto de escucha HTTP | `8000` |
 | `APP_HOST` | Host de enlace | `0.0.0.0` |
 | `LOG_LEVEL` | Nivel de logs | `INFO` |
-| `MAX_PAYLOAD_SIZE_BYTES` | Límite máximo de payload aceptado | `26214400` (25 MB) |
+| `MAX_PAYLOAD_SIZE_BYTES` | Límite máximo de payload aceptado | `14680064` (14 MB; margen bajo el límite BSON de 16 MB de MongoDB) |
 | `DATABASE_URL` | Cadena de conexi?n as?ncrona a PostgreSQL | Configurada mediante `.env` |
 
 ---
@@ -172,7 +172,7 @@ Todas las respuestas de error (`4xx` y `5xx`) responden con la siguiente estruct
 ### Códigos de Error Principales
 - `404 Not Found` (`DOCUMENT_NOT_FOUND` / `NOT_FOUND`): Recurso o ruta no encontrada.
 - `409 Conflict` (`DOCUMENT_ALREADY_EXISTS`): Intento de registrar un checksum duplicado. Devuelve `existing_id`. **Nunca** expone `extracted_text`.
-- `413 Payload Too Large` (`PAYLOAD_TOO_LARGE`): Petición rechazada antes de cargar en memoria si excede los 25 MB.
+- `413 Payload Too Large` (`PAYLOAD_TOO_LARGE`): Petición rechazada si excede los 14 MB (configurable vía `MAX_PAYLOAD_SIZE_BYTES`), o si el documento BSON superaría el límite de 16 MB de MongoDB. Nunca expone `extracted_text`.
 - `422 Unprocessable Entity` (`VALIDATION_ERROR`): Violación de validación (body incompleto, campos desconocidos por `extra="forbid"`, query inválida como `limit=0` o `limit>100`).
 - `500 Internal Server Error` (`PERSISTENCE_INFRASTRUCTURE_ERROR` / `INTERNAL_SERVER_ERROR`): Fallo de base de datos capturado sin exponer secretos ni texto extraído.
 

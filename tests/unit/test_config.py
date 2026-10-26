@@ -16,7 +16,7 @@ def test_default_settings(monkeypatch: pytest.MonkeyPatch):
     assert settings.app_host == "0.0.0.0"
     assert settings.mongodb_uri == "mongodb://mongodb:27017"
     assert settings.mongodb_db == "persistence_db"
-    assert settings.max_payload_size_bytes == 26214400
+    assert settings.max_payload_size_bytes == 14 * 1024 * 1024  # 14 MB por defecto
     assert settings.mongodb_server_selection_timeout_ms == 5000
     assert settings.mongodb_connect_timeout_ms == 5000
     assert settings.mongodb_socket_timeout_ms == 20000

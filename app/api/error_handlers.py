@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.domain.exceptions import (
     DocumentAlreadyExistsError,
     DocumentNotFoundError,
+    DocumentTooLargeError,
     PersistenceInfrastructureError,
 )
 from app.observability import log_event
@@ -103,6 +104,25 @@ async def document_already_exists_handler(
     return JSONResponse(status_code=409, content=payload)
 
 
+async def document_too_large_handler(
+    request: Request, exc: DocumentTooLargeError
+) -> JSONResponse:
+    """Mapea DocumentTooLargeError a 413 con formato uniforme (sin filtrar texto)."""
+    req_id = _get_request_id(request)
+    log_event(
+        "document_too_large",
+        level=logging.WARNING,
+        request_id=req_id,
+    )
+    payload = build_error_payload(
+        code="PAYLOAD_TOO_LARGE",
+        message="Request payload exceeds maximum allowed size (MongoDB 16 MB BSON limit).",
+        details={},
+        request_id=req_id,
+    )
+    return JSONResponse(status_code=413, content=payload)
+
+
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     """Mapea excepciones HTTP estándar (404 ruta inexistente, 405, 413, etc.) a formato uniforme."""
     req_id = _get_request_id(request)
@@ -158,6 +178,7 @@ def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(DocumentNotFoundError, document_not_found_handler)
     app.add_exception_handler(DocumentAlreadyExistsError, document_already_exists_handler)
+    app.add_exception_handler(DocumentTooLargeError, document_too_large_handler)
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(PersistenceInfrastructureError, persistence_infrastructure_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)

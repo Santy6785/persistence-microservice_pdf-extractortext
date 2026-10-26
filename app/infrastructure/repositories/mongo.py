@@ -10,10 +10,11 @@ garantiza mediante un índice único creado en el lifespan de la aplicación.
 from typing import Optional
 
 from pymongo import ASCENDING, DESCENDING
-from pymongo.errors import DuplicateKeyError, PyMongoError
+from pymongo.errors import DocumentTooLarge, DuplicateKeyError, PyMongoError
 
 from app.domain.exceptions import (
     DocumentAlreadyExistsError,
+    DocumentTooLargeError,
     PersistenceInfrastructureError,
 )
 from app.domain.models import Document
@@ -84,6 +85,11 @@ class MongoDocumentRepository(DocumentRepository):
             raise DocumentAlreadyExistsError(
                 checksum=document.checksum_sha256,
                 existing_id=existing_id or document.id,
+            ) from exc
+        except DocumentTooLarge as exc:
+            # El documento supera el límite BSON de 16 MB de MongoDB.
+            raise DocumentTooLargeError(
+                f"Document exceeds MongoDB 16 MB BSON limit: {str(exc)}"
             ) from exc
         except PyMongoError as exc:
             raise PersistenceInfrastructureError(

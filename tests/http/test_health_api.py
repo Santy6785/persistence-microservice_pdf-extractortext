@@ -36,3 +36,16 @@ async def test_health_ready_returns_503_when_db_unhealthy(test_app: FastAPI, cli
     resp = await client.get("/health/ready")
     assert resp.status_code == 503
     assert resp.json() == {"status": "unhealthy", "database": "disconnected"}
+
+
+async def test_health_ready_returns_503_when_ping_fails(
+    test_app: FastAPI, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    """El ping a Mongo falla → check_db_health retorna False → 503."""
+    async def false_ping():
+        return False
+
+    monkeypatch.setattr("app.api.health.ping", false_ping)
+    resp = await client.get("/health/ready")
+    assert resp.status_code == 503
+    assert resp.json() == {"status": "unhealthy", "database": "disconnected"}

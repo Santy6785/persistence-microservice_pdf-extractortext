@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.api.dependencies import get_document_repository
-from app.domain.exceptions import PersistenceInfrastructureError
+from app.domain.exceptions import DocumentTooLargeError, PersistenceInfrastructureError
 from app.domain.models import Document
 from app.infrastructure.repositories.memory import InMemoryDocumentRepository
 from app.main import create_app
@@ -334,3 +334,36 @@ async def test_500_error_does_not_leak_extracted_text(
     assert failure_logs[0]["request_id"] == request_id
     assert secret_text not in caplog.text
     assert connection_url not in caplog.text
+
+
+async def test_document_too_large_returns_413_uniform_without_extracted_text(
+    test_app: FastAPI,
+):
+    """Un documento que supera el límite BSON de 16 MB devuelve 413 uniforme."""
+    request_id = "document-too-large-413"
+    secret_text = "x" * 200000  # > 16 MB no cabe en el body de prueba, pero el repo lo simula
+
+    class TooLargeRepository(InMemoryDocumentRepository):
+        async def save(self, document: Document) -> Document:
+            raise DocumentTooLargeError(
+                f"Document exceeds MongoDB 16 MB BSON limit: {document.id}"
+            )
+
+    test_app.dependency_overrides[get_document_repository] = lambda: TooLargeRepository()
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/v1/documents",
+            json={
+                "checksum_sha256": "a" * 64,
+                "filename": "too_large.pdf",
+                "extracted_text": secret_text,
+            },
+            headers={"X-Request-ID": request_id},
+        )
+        assert resp.status_code == 413
+        data = resp.json()
+        assert data["error"]["code"] == "PAYLOAD_TOO_LARGE"
+        assert "exceeds maximum allowed size" in data["error"]["message"]
+        # Garantía estricta: NO debe contener el texto extraído
+        assert secret_text not in resp.text

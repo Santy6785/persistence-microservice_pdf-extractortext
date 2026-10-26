@@ -35,3 +35,11 @@ class PersistenceInfrastructureError(DomainError):
     def __init__(self, message: str):
         self.message = message
         super().__init__(f"Persistence infrastructure failure: {message}")
+
+
+class DocumentTooLargeError(DomainError):
+    """Lanzada cuando un documento supera el límite BSON de 16 MB de MongoDB."""
+
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(f"Document too large: {message}")

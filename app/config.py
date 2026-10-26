@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     log_level: str = "INFO"
 
-    max_payload_size_bytes: int = 26214400  # 25 MB por defecto
+    max_payload_size_bytes: int = 14680064  # 14 MB (margen bajo el límite BSON de 16 MB)
 
     # MongoDB (única base de persistencia)
     mongodb_uri: str = "mongodb://mongodb:27017"
