@@ -7,11 +7,13 @@ unicidad del documento está garantizada por _id y la unicidad del checksum_sha2
 garantiza mediante un índice único creado en el lifespan de la aplicación.
 """
 
+import asyncio
 from typing import Optional
 
 from pymongo import ASCENDING, DESCENDING
 from pymongo.errors import DocumentTooLarge, DuplicateKeyError, PyMongoError
 
+from app.config import get_settings
 from app.domain.exceptions import (
     DocumentAlreadyExistsError,
     DocumentTooLargeError,
@@ -20,6 +22,25 @@ from app.domain.exceptions import (
 from app.domain.models import Document
 from app.domain.repositories import DocumentRepository
 from app.infrastructure.database.connection import get_client, get_database_name
+
+
+async def _run_with_timeout(coro, operation: str):
+    """Ejecuta una operación de datos de MongoDB con timeout.
+
+    El timeout se lee de MONGODB_OPERATION_TIMEOUT_MS (configuración), cuyo
+    validador exige que sea estrictamente mayor que
+    MONGODB_SERVER_SELECTION_TIMEOUT_MS. Si la operación se excede, la tarea
+    actual se cancela y se lanza PersistenceInfrastructureError: ninguna
+    operación queda colgada esperando a MongoDB.
+    """
+    timeout_ms = get_settings().mongodb_operation_timeout_ms
+    try:
+        async with asyncio.timeout(timeout_ms / 1000.0):
+            return await coro
+    except TimeoutError as exc:
+        raise PersistenceInfrastructureError(
+            f"Timeout de operación MongoDB '{operation}' tras {timeout_ms} ms"
+        ) from exc
 
 
 class MongoDocumentRepository(DocumentRepository):
@@ -77,8 +98,12 @@ class MongoDocumentRepository(DocumentRepository):
 
     async def save(self, document: Document) -> Document:
         try:
-            await self._collection.insert_one(self._to_document(document))
+            await _run_with_timeout(
+                self._collection.insert_one(self._to_document(document)), "insert_one"
+            )
             return document
+        except PersistenceInfrastructureError:
+            raise
         except DuplicateKeyError as exc:
             # Violación de unicidad del índice único en checksum_sha256.
             existing_id = await self._existing_id_for_checksum(document.checksum_sha256)
@@ -102,8 +127,12 @@ class MongoDocumentRepository(DocumentRepository):
 
     async def find_by_id(self, document_id: str) -> Optional[Document]:
         try:
-            doc = await self._collection.find_one({"_id": document_id})
+            doc = await _run_with_timeout(
+                self._collection.find_one({"_id": document_id}), "find_one"
+            )
             return self._to_entity(doc) if doc else None
+        except PersistenceInfrastructureError:
+            raise
         except PyMongoError as exc:
             raise PersistenceInfrastructureError(
                 f"Error de MongoDB al buscar por ID: {str(exc)}"
@@ -115,8 +144,12 @@ class MongoDocumentRepository(DocumentRepository):
 
     async def find_by_checksum(self, checksum: str) -> Optional[Document]:
         try:
-            doc = await self._collection.find_one({"checksum_sha256": checksum})
+            doc = await _run_with_timeout(
+                self._collection.find_one({"checksum_sha256": checksum}), "find_one"
+            )
             return self._to_entity(doc) if doc else None
+        except PersistenceInfrastructureError:
+            raise
         except PyMongoError as exc:
             raise PersistenceInfrastructureError(
                 f"Error de MongoDB al buscar por checksum: {str(exc)}"
@@ -130,22 +163,27 @@ class MongoDocumentRepository(DocumentRepository):
         self, skip: int = 0, limit: int = 20
     ) -> tuple[list[Document], int]:
         try:
-            # Total con count_documents (sin traer documentos).
-            total = await self._collection.count_documents({})
+            async def _fetch_page() -> tuple[list[Document], int]:
+                # Total con count_documents (sin traer documentos).
+                total = await self._collection.count_documents({})
 
-            # Listado paginado con proyección: NO traer extracted_text.
-            # Orden determinista: created_at DESC, id (_id) ASC.
-            cursor = (
-                self._collection.find(
-                    {},
-                    projection={"extracted_text": 0},
+                # Listado paginado con proyección: NO traer extracted_text.
+                # Orden determinista: created_at DESC, id (_id) ASC.
+                cursor = (
+                    self._collection.find(
+                        {},
+                        projection={"extracted_text": 0},
+                    )
+                    .sort([("created_at", DESCENDING), ("_id", ASCENDING)])
+                    .skip(skip)
+                    .limit(limit)
                 )
-                .sort([("created_at", DESCENDING), ("_id", ASCENDING)])
-                .skip(skip)
-                .limit(limit)
-            )
-            docs = [self._to_entity(doc) async for doc in cursor]
-            return docs, total
+                docs = [self._to_entity(doc) async for doc in cursor]
+                return docs, total
+
+            return await _run_with_timeout(_fetch_page(), "list_paginated")
+        except PersistenceInfrastructureError:
+            raise
         except PyMongoError as exc:
             raise PersistenceInfrastructureError(
                 f"Error de MongoDB al listar documentos: {str(exc)}"
@@ -157,8 +195,12 @@ class MongoDocumentRepository(DocumentRepository):
 
     async def delete(self, document_id: str) -> bool:
         try:
-            result = await self._collection.delete_one({"_id": document_id})
+            result = await _run_with_timeout(
+                self._collection.delete_one({"_id": document_id}), "delete_one"
+            )
             return result.deleted_count > 0
+        except PersistenceInfrastructureError:
+            raise
         except PyMongoError as exc:
             raise PersistenceInfrastructureError(
                 f"Error de MongoDB al eliminar documento: {str(exc)}"
@@ -175,8 +217,11 @@ class MongoDocumentRepository(DocumentRepository):
     async def _existing_id_for_checksum(self, checksum: str) -> Optional[str]:
         """Devuelve el id del documento existente con el checksum dado, si lo hay."""
         try:
-            doc = await self._collection.find_one(
-                {"checksum_sha256": checksum}, projection={"_id": 1}
+            doc = await _run_with_timeout(
+                self._collection.find_one(
+                    {"checksum_sha256": checksum}, projection={"_id": 1}
+                ),
+                "find_one",
             )
             return doc["_id"] if doc else None
         except PyMongoError:

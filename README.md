@@ -67,6 +67,7 @@ Variables disponibles:
 | `MONGODB_SERVER_SELECTION_TIMEOUT_MS` | Timeout de selección de servidor (ms) | `5000` |
 | `MONGODB_CONNECT_TIMEOUT_MS` | Timeout de conexión (ms) | `5000` |
 | `MONGODB_SOCKET_TIMEOUT_MS` | Timeout de socket (ms) | `20000` |
+| `MONGODB_OPERATION_TIMEOUT_MS` | Timeout máximo de cada operación de datos contra MongoDB (ms). Debe ser mayor que `MONGODB_SERVER_SELECTION_TIMEOUT_MS` | `10000` |
 
 ---
 
@@ -124,7 +125,7 @@ Toda la lógica fue construida siguiendo **TDD estricto**:
 ### Comandos de prueba con `uv`
 
 ```bash
-# 1. Ejecutar toda la suite de tests (51 tests)
+# 1. Ejecutar toda la suite de tests (65 tests)
 uv run pytest -v
 
 # 2. Ejecutar únicamente tests rápidos (sin base de datos real)
@@ -173,7 +174,8 @@ Todas las respuestas de error (`4xx` y `5xx`) responden con la siguiente estruct
 - `409 Conflict` (`DOCUMENT_ALREADY_EXISTS`): Intento de registrar un checksum duplicado. Devuelve `existing_id`. **Nunca** expone `extracted_text`.
 - `413 Payload Too Large` (`PAYLOAD_TOO_LARGE`): Petición rechazada si excede los 14 MB (configurable vía `MAX_PAYLOAD_SIZE_BYTES`), o si el documento BSON superaría el límite de 16 MB de MongoDB. Nunca expone `extracted_text`.
 - `422 Unprocessable Entity` (`VALIDATION_ERROR`): Violación de validación (body incompleto, campos desconocidos por `extra="forbid"`, query inválida como `limit=0` o `limit>100`).
-- `500 Internal Server Error` (`PERSISTENCE_INFRASTRUCTURE_ERROR` / `INTERNAL_SERVER_ERROR`): Fallo de base de datos capturado sin exponer secretos ni texto extraído.
+- `503 Service Unavailable` (`SERVICE_UNAVAILABLE`): fallo de infraestructura de persistencia (MongoDB caído o una operación de datos superó `MONGODB_OPERATION_TIMEOUT_MS`), capturado sin exponer secretos ni `extracted_text`.
+- `500 Internal Server Error` (`INTERNAL_SERVER_ERROR`): excepción inesperada no controlada.
 
 ---
 
