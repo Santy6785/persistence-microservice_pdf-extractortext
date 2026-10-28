@@ -144,7 +144,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
 async def persistence_infrastructure_handler(
     request: Request, exc: PersistenceInfrastructureError
 ) -> JSONResponse:
-    """Mapea fallas de infraestructura de persistencia a 500 uniforme sin exponer secretos."""
+    """Mapea fallas de infraestructura a 503 (SERVICE_UNAVAILABLE) sin exponer secretos."""
     req_id = _get_request_id(request)
     log_event(
         "persistence_infrastructure_failure",
@@ -152,12 +152,12 @@ async def persistence_infrastructure_handler(
         request_id=req_id,
     )
     payload = build_error_payload(
-        code="PERSISTENCE_INFRASTRUCTURE_ERROR",
+        code="SERVICE_UNAVAILABLE",
         message="A database or infrastructure failure occurred.",
         details={},
         request_id=req_id,
     )
-    return JSONResponse(status_code=500, content=payload)
+    return JSONResponse(status_code=503, content=payload)
 
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
