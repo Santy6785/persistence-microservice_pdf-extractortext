@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from app.config import Settings, get_settings
 
@@ -43,3 +44,38 @@ def test_get_settings_cached():
     s1 = get_settings()
     s2 = get_settings()
     assert s1 is s2
+
+
+def test_default_operation_timeout_es_mayor_que_server_selection(monkeypatch: pytest.MonkeyPatch):
+    get_settings.cache_clear()
+    for var in ["MONGODB_URI", "MONGODB_DB"]:
+        monkeypatch.delenv(var, raising=False)
+
+    settings = Settings(_env_file=None)
+    assert settings.mongodb_operation_timeout_ms == 10000
+    assert (
+        settings.mongodb_operation_timeout_ms
+        > settings.mongodb_server_selection_timeout_ms
+    )
+
+
+def test_operation_timeout_debe_ser_mayor_que_server_selection_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """MONGODB_OPERATION_TIMEOUT_MS menor o igual que server selection es inválido."""
+    monkeypatch.setenv("MONGODB_SERVER_SELECTION_TIMEOUT_MS", "8000")
+    monkeypatch.setenv("MONGODB_OPERATION_TIMEOUT_MS", "5000")
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)
+
+
+def test_operation_timeout_por_defecto_igual_a_server_selection_es_invalido(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """El valor límite (igual) también se rechaza: debe ser estrictamente mayor."""
+    monkeypatch.setenv("MONGODB_SERVER_SELECTION_TIMEOUT_MS", "10000")
+    monkeypatch.setenv("MONGODB_OPERATION_TIMEOUT_MS", "10000")
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)

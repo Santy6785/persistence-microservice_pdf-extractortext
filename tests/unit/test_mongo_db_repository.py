@@ -1,8 +1,11 @@
+import asyncio
 import datetime as _dt
+import time
 
 import pytest
 from pymongo.errors import ConnectionFailure, DocumentTooLarge
 
+from app.config import Settings
 from app.domain.exceptions import DocumentTooLargeError, PersistenceInfrastructureError
 from app.domain.models import Document
 from app.infrastructure.repositories.mongo import MongoDocumentRepository
@@ -34,6 +37,36 @@ class _FakeClient:
 
 def _make_fake_client(exc: Exception) -> _FakeClient:
     return _FakeClient(exc)
+
+
+class _SlowCollection:
+    """Colección falsa cuya cada operación se duerme más allá del timeout de operación."""
+
+    async def insert_one(self, document):
+        await asyncio.sleep(5)
+
+    async def find_one(self, filter):
+        await asyncio.sleep(5)
+
+    async def count_documents(self, filter):
+        await asyncio.sleep(5)
+
+    async def delete_one(self, filter):
+        await asyncio.sleep(5)
+
+
+class _SlowDb:
+    def __getitem__(self, name):
+        return _SlowCollection()
+
+
+class _SlowClient:
+    def __getitem__(self, name):
+        return _SlowDb()
+
+
+def _make_slow_client() -> _SlowClient:
+    return _SlowClient()
 
 
 def _sample_document() -> Document:
@@ -73,3 +106,33 @@ async def test_other_pymongo_error_raises_infrastructure_error(
     repo = MongoDocumentRepository()
     with pytest.raises(PersistenceInfrastructureError):
         await repo.save(_sample_document())
+
+
+@pytest.mark.asyncio
+async def test_operation_exceeding_timeout_raises_infrastructure_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Una operación de datos que excede MONGODB_OPERATION_TIMEOUT_MS lanza
+    PersistenceInfrastructureError y la operación no queda colgada esperando a MongoDB."""
+    # 100 ms de operación vs 50 ms de selección de servidor: válido (> serverSelection).
+    settings = Settings(
+        mongodb_operation_timeout_ms=100,
+        mongodb_server_selection_timeout_ms=50,
+    )
+    monkeypatch.setattr(
+        "app.infrastructure.repositories.mongo.get_settings", lambda: settings
+    )
+    monkeypatch.setattr(
+        "app.infrastructure.repositories.mongo.get_client",
+        lambda: _make_slow_client(),
+    )
+    repo = MongoDocumentRepository()
+
+    start = time.monotonic()
+    with pytest.raises(PersistenceInfrastructureError) as exc_info:
+        await repo.save(_sample_document())
+    elapsed = time.monotonic() - start
+
+    # La operación falla rápido por timeout; no se queda colgada los 5 s del fake.
+    assert elapsed < 2
+    assert "timeout" in str(exc_info.value).lower()

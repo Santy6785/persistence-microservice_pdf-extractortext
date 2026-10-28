@@ -1,15 +1,30 @@
+import json
 from datetime import datetime, timezone
 
 import pytest
 from pydantic import ValidationError
+from starlette.requests import Request
 
-from app.api.error_handlers import build_error_payload
+from app.api.error_handlers import (
+    build_error_payload,
+    persistence_infrastructure_handler,
+    unhandled_exception_handler,
+)
 from app.api.schemas import (
     DocumentCreateRequest,
     DocumentSummaryResponse,
     ErrorEnvelope,
 )
+from app.domain.exceptions import PersistenceInfrastructureError
 from app.domain.models import Document
+
+
+class _FakeRequest(Request):
+    """Request mínimo para probar handlers sin ASGI."""
+
+    def __init__(self, request_id: str = "req-unit") -> None:
+        super().__init__({"type": "http", "state": {}})
+        self.state.request_id = request_id
 
 
 def test_document_create_request_valid_and_checksum_normalized():
@@ -81,3 +96,37 @@ def test_build_error_payload_structure():
     assert envelope.error.details == {"field": "missing"}
     assert envelope.error.request_id == "req-123"
     assert envelope.error.timestamp is not None
+
+
+async def test_persistence_infrastructure_handler_returns_503_service_unavailable():
+    """PersistenceInfrastructureError → 503 SERVICE_UNAVAILABLE, sin filtrar extracted_text."""
+    secret_text = "SECRETO_NO_DEBE_FILTRARSE"
+    exc = PersistenceInfrastructureError(
+        f"se cayó la base de datos con extracted_text={secret_text}"
+    )
+    response = await persistence_infrastructure_handler(_FakeRequest("req-503"), exc)
+
+    assert response.status_code == 503
+    body = json.loads(response.body)
+    assert body["error"]["code"] == "SERVICE_UNAVAILABLE"
+    assert body["error"]["message"] == "A database or infrastructure failure occurred."
+    assert body["error"]["details"] == {}
+    assert body["error"]["request_id"] == "req-503"
+    assert body["error"]["timestamp"]
+    assert secret_text not in response.body.decode()
+
+
+async def test_unhandled_exception_handler_returns_500_internal_server_error():
+    """Una excepción no prevista → 500 INTERNAL_SERVER_ERROR, sin filtrar datos sensibles."""
+    secret_text = "SECRETO_NO_DEBE_FILTRARSE"
+    exc = RuntimeError(f"algo totalmente inesperado con {secret_text}")
+    response = await unhandled_exception_handler(_FakeRequest("req-500"), exc)
+
+    assert response.status_code == 500
+    body = json.loads(response.body)
+    assert body["error"]["code"] == "INTERNAL_SERVER_ERROR"
+    assert body["error"]["message"] == "An unexpected internal server error occurred."
+    assert body["error"]["details"] == {}
+    assert body["error"]["request_id"] == "req-500"
+    assert body["error"]["timestamp"]
+    assert secret_text not in response.body.decode()

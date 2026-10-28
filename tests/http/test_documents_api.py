@@ -291,11 +291,12 @@ async def test_nonexistent_route_returns_404_uniform(client: AsyncClient):
     assert data["error"]["request_id"] is not None
 
 
-async def test_500_error_does_not_leak_extracted_text(
+async def test_503_infrastructure_error_returns_service_unavailable_without_extracted_text(
     test_app: FastAPI, caplog: pytest.LogCaptureFixture
 ):
+    """Mapea PersistenceInfrastructureError a 503 SERVICE_UNAVAILABLE, sin datos sensibles."""
     caplog.set_level(logging.ERROR)
-    request_id = "infrastructure-request-500"
+    request_id = "infrastructure-request-503"
     secret_text = "SECRET_DO_NOT_LEAK"
     connection_url = "mongodb://user:private-password@database:27017/private"
 
@@ -318,10 +319,16 @@ async def test_500_error_does_not_leak_extracted_text(
             },
             headers={"X-Request-ID": request_id},
         )
-        assert resp.status_code == 500
+        assert resp.status_code == 503
         data = resp.json()
-        assert data["error"]["code"] == "PERSISTENCE_INFRASTRUCTURE_ERROR"
+        assert data["error"]["code"] == "SERVICE_UNAVAILABLE"
+        assert data["error"]["message"] == "A database or infrastructure failure occurred."
+        assert data["error"]["details"] == {}
+        assert data["error"]["request_id"] == request_id
+        assert data["error"]["timestamp"] is not None
+        # Garantía estricta: secreto ni datos de conexión en cuerpo del error
         assert secret_text not in resp.text
+        assert connection_url not in resp.text
 
     logs = [
         json.loads(record.getMessage())
