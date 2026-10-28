@@ -22,8 +22,8 @@ services:
       MONGODB_DB: "${MONGODB_DB:-persistence_db}"
       MONGODB_COLLECTION: "${MONGODB_COLLECTION:-documents}"
       MAX_PAYLOAD_SIZE_BYTES: "${MAX_PAYLOAD_SIZE_BYTES:-14680064}"
-    ports:
-      - "${APP_PORT:-8000}:8000"
+    expose:
+      - "8000"
     depends_on:
       mongodb:
         condition: service_healthy
