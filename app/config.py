@@ -20,7 +20,8 @@ class Settings(BaseSettings):
     max_payload_size_bytes: int = 14680064  # 14 MB (margen bajo el límite BSON de 16 MB)
 
     # MongoDB (única base de persistencia)
-    mongodb_uri: str = "mongodb://mongodb:27017"
+    # MONGODB_URI es obligatoria: no tiene valor por defecto (no se commitean credenciales).
+    mongodb_uri: str
     mongodb_db: str = "persistence_db"
     mongodb_collection: str = "documents"
     mongodb_server_selection_timeout_ms: int = 5000
@@ -32,6 +33,19 @@ class Settings(BaseSettings):
     # de servidor es solo una parte de la operación, y el timeout de operación
     # es el que rige las peticiones de datos reales.
     mongodb_operation_timeout_ms: int = 10000
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_mongodb_uri_presente(cls, data: dict) -> dict:
+        """MONGODB_URI es obligatoria: si falta, fallar rápido con mensaje claro."""
+        if not data.get("mongodb_uri"):
+            raise ValueError(
+                "Falta la variable de entorno MONGODB_URI. "
+                "Definila en .env con la cadena de conexión a MongoDB "
+                "(p. ej. mongodb://usuario:clave@host:27017/base_de_datos). "
+                "No commitees credenciales."
+            )
+        return data
 
     @model_validator(mode="after")
     def _validate_operation_timeout_gt_server_selection(self) -> "Settings":

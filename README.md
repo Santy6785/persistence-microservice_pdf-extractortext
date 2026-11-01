@@ -61,7 +61,7 @@ Variables disponibles:
 | `APP_HOST` | Host de enlace | `0.0.0.0` |
 | `LOG_LEVEL` | Nivel de logs | `INFO` |
 | `MAX_PAYLOAD_SIZE_BYTES` | Límite máximo de payload aceptado | `14680064` (14 MB; margen bajo el límite BSON de 16 MB de MongoDB) |
-| `MONGODB_URI` | Cadena de conexión a MongoDB | `mongodb://mongodb:27017` |
+| `MONGODB_URI` | Cadena de conexión a MongoDB (obligatoria, sin valor por defecto; definir en `.env`) | — |
 | `MONGODB_DB` | Nombre de la base de datos | `persistence_db` |
 | `MONGODB_COLLECTION` | Nombre de la colección | `documents` |
 | `MONGODB_SERVER_SELECTION_TIMEOUT_MS` | Timeout de selección de servidor (ms) | `5000` |
