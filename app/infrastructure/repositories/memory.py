@@ -4,7 +4,8 @@ Utilizada para tests unitarios rápidos y tests de contrato.
 """
 
 from copy import deepcopy
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Any, Optional
 
 from app.domain.exceptions import DocumentAlreadyExistsError
 from app.domain.models import Document
@@ -63,3 +64,20 @@ class InMemoryDocumentRepository(DocumentRepository):
             self._checksum_to_id.pop(doc.checksum_sha256, None)
             return True
         return False
+
+    async def update(
+        self,
+        document_id: str,
+        filename: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> Optional[Document]:
+        doc = self._documents.get(document_id)
+        if not doc:
+            return None
+        now = datetime.now(timezone.utc)
+        if filename is not None:
+            doc.filename = filename
+        if metadata is not None:
+            doc.metadata = deepcopy(metadata)
+        doc.updated_at = now
+        return deepcopy(doc)

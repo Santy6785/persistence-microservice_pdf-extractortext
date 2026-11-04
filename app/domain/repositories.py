@@ -4,7 +4,7 @@ Define el contrato abstracto que cualquier implementación técnica debe satisfa
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Any, Optional
 
 from app.domain.models import Document
 
@@ -67,6 +67,29 @@ class DocumentRepository(ABC):
 
         Returns:
             True si fue eliminado, False si no existía.
+
+        Raises:
+            PersistenceInfrastructureError: Si ocurre un fallo técnico en la infraestructura.
+        """
+        pass
+
+    @abstractmethod
+    async def update(
+        self,
+        document_id: str,
+        filename: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> Optional[Document]:
+        """
+        Actualiza parcialmente los campos editables de un documento existente.
+
+        Args:
+            document_id: UUID del documento a actualizar.
+            filename: Nuevo nombre del archivo (si fue provisto).
+            metadata: Nuevos metadatos (si fueron provistos).
+
+        Returns:
+            Document actualizado si fue encontrado, None si no existía.
 
         Raises:
             PersistenceInfrastructureError: Si ocurre un fallo técnico en la infraestructura.

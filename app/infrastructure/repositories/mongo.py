@@ -8,7 +8,8 @@ garantiza mediante un índice único creado en el lifespan de la aplicación.
 """
 
 import asyncio
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Any, Optional
 
 from pymongo import ASCENDING, DESCENDING
 from pymongo.errors import DocumentTooLarge, DuplicateKeyError, PyMongoError
@@ -79,7 +80,18 @@ class MongoDocumentRepository(DocumentRepository):
 
         `extracted_text` se lee con .get() porque list_paginated lo proyecta
         fuera (proyección {"extracted_text": 0}); en ese caso se devuelve "".
+
+        MongoDB almacena datetime con resolución de milisegundos y sin
+        tzinfo (naive UTC). Este método normaliza ambos campos temporales
+        a aware UTC para mantener consistencia en el dominio.
         """
+        created = doc["created_at"]
+        updated = doc["updated_at"]
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        if updated.tzinfo is None:
+            updated = updated.replace(tzinfo=timezone.utc)
+
         return Document(
             id=doc["_id"],
             checksum_sha256=doc["checksum_sha256"],
@@ -88,8 +100,8 @@ class MongoDocumentRepository(DocumentRepository):
             page_count=doc.get("page_count"),
             file_size_bytes=doc.get("file_size_bytes"),
             metadata=doc.get("metadata", {}) or {},
-            created_at=doc["created_at"],
-            updated_at=doc["updated_at"],
+            created_at=created,
+            updated_at=updated,
         )
 
     # ------------------------------------------------------------------
@@ -208,6 +220,46 @@ class MongoDocumentRepository(DocumentRepository):
         except Exception as exc:
             raise PersistenceInfrastructureError(
                 f"Error inesperado al eliminar documento: {str(exc)}"
+            ) from exc
+
+    async def update(
+        self,
+        document_id: str,
+        filename: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
+    ) -> Optional[Document]:
+        now = datetime.now(timezone.utc)
+        set_fields: dict[str, Any] = {"updated_at": now}
+        if filename is not None:
+            set_fields["filename"] = filename
+        if metadata is not None:
+            set_fields["metadata"] = metadata
+
+        try:
+            result = await _run_with_timeout(
+                self._collection.update_one(
+                    {"_id": document_id},
+                    {"$set": set_fields},
+                ),
+                "update_one",
+            )
+            if result.matched_count == 0:
+                return None
+
+            doc = await _run_with_timeout(
+                self._collection.find_one({"_id": document_id}),
+                "find_one",
+            )
+            return self._to_entity(doc) if doc else None
+        except PersistenceInfrastructureError:
+            raise
+        except PyMongoError as exc:
+            raise PersistenceInfrastructureError(
+                f"Error de MongoDB al actualizar documento: {str(exc)}"
+            ) from exc
+        except Exception as exc:
+            raise PersistenceInfrastructureError(
+                f"Error inesperado al actualizar documento: {str(exc)}"
             ) from exc
 
     # ------------------------------------------------------------------
