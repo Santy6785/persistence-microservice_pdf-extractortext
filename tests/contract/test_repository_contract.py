@@ -188,3 +188,65 @@ class BaseDocumentRepositoryContractTest(ABC):
         # Borrar nuevamente debe retornar False
         deleted_again = await repo.delete(doc.id)
         assert deleted_again is False
+
+    async def test_update_filename(self):
+        repo = await self.get_repository()
+        doc = self._create_sample_document(
+            doc_id="88888888-8888-8888-8888-888888888888",
+            checksum="a1" * 32,
+            filename="original.pdf",
+        )
+        saved = await repo.save(doc)
+        # Re-read to get storage-normalized timestamps
+        before = await repo.find_by_id(saved.id)
+
+        updated = await repo.update(before.id, filename="renamed.pdf")
+        assert updated is not None
+        assert updated.filename == "renamed.pdf"
+        assert updated.updated_at >= before.updated_at
+        assert updated.created_at == before.created_at
+        assert updated.checksum_sha256 == before.checksum_sha256
+
+    async def test_update_metadata(self):
+        repo = await self.get_repository()
+        doc = self._create_sample_document(
+            doc_id="99999999-9999-9999-9999-999999999999",
+            checksum="b1" * 32,
+        )
+        saved = await repo.save(doc)
+        before = await repo.find_by_id(saved.id)
+
+        new_meta = {"tag": "updated", "version": 2}
+        updated = await repo.update(before.id, metadata=new_meta)
+        assert updated is not None
+        assert updated.metadata == new_meta
+        assert updated.updated_at >= before.updated_at
+
+    async def test_update_nonexistent_returns_none(self):
+        repo = await self.get_repository()
+        result = await repo.update(
+            "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            filename="nope.pdf",
+        )
+        assert result is None
+
+    async def test_update_preserves_immutable_fields(self):
+        repo = await self.get_repository()
+        doc = self._create_sample_document(
+            doc_id="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            checksum="c1" * 32,
+            filename="immutable_test.pdf",
+        )
+        saved = await repo.save(doc)
+        before = await repo.find_by_id(saved.id)
+
+        updated = await repo.update(
+            before.id, filename="changed.pdf", metadata={"new": True}
+        )
+        assert updated is not None
+        assert updated.id == before.id
+        assert updated.checksum_sha256 == before.checksum_sha256
+        assert updated.extracted_text == before.extracted_text
+        assert updated.page_count == before.page_count
+        assert updated.file_size_bytes == before.file_size_bytes
+        assert updated.created_at == before.created_at
