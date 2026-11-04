@@ -6,7 +6,7 @@ import re
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domain.models import Document
 
@@ -72,6 +72,32 @@ class DocumentCreateRequest(BaseModel):
         if not _HEX_64_PATTERN.match(normalized):
             raise ValueError("Checksum must be a 64-character hexadecimal string.")
         return normalized
+
+
+class DocumentUpdateRequest(BaseModel):
+    """Cuerpo de la petición para actualización parcial (PATCH) de un documento."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    filename: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="Nuevo nombre original del archivo PDF",
+    )
+    metadata: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Nuevos metadatos asociados al documento",
+    )
+
+    @model_validator(mode="after")
+    def validate_non_empty(self) -> "DocumentUpdateRequest":
+        if self.filename is None and self.metadata is None:
+            raise ValueError(
+                "El cuerpo de actualización no puede estar vacío. "
+                "Debe proveer al menos 'filename' o 'metadata'."
+            )
+        return self
 
 
 class DocumentResponse(BaseModel):

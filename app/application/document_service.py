@@ -6,7 +6,7 @@ Orquesta casos de uso de negocio y coordina con el repositorio.
 import uuid
 from datetime import datetime, timezone
 
-from app.application.dtos import CreateDocumentDTO, PaginatedDocumentsDTO
+from app.application.dtos import CreateDocumentDTO, PaginatedDocumentsDTO, UpdateDocumentDTO
 from app.domain.exceptions import DocumentNotFoundError
 from app.domain.models import Document
 from app.domain.repositories import DocumentRepository
@@ -66,3 +66,14 @@ class DocumentService:
         deleted = await self._repository.delete(document_id)
         if not deleted:
             raise DocumentNotFoundError(document_id=document_id)
+
+    async def update_document(self, document_id: str, dto: UpdateDocumentDTO) -> Document:
+        """Actualiza parcialmente un documento o lanza DocumentNotFoundError si no existe."""
+        doc = await self._repository.update(
+            document_id=document_id,
+            filename=dto.filename,
+            metadata=dto.metadata,
+        )
+        if doc is None:
+            raise DocumentNotFoundError(document_id=document_id)
+        return doc

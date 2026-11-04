@@ -21,6 +21,14 @@ class CreateDocumentDTO:
 
 
 @dataclass
+class UpdateDocumentDTO:
+    """Datos de entrada para actualización parcial (PATCH) de un documento."""
+
+    filename: Optional[str] = None
+    metadata: Optional[dict[str, Any]] = None
+
+
+@dataclass
 class PaginatedDocumentsDTO:
     """Resultado paginado de documentos."""
 

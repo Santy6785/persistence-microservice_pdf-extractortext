@@ -426,3 +426,136 @@ async def test_request_size_middleware_rejects_over_limit_413_uniform(
         data2 = resp2.json()
         assert data2["error"]["code"] == "PAYLOAD_TOO_LARGE"
         assert data2["error"]["request_id"] is not None
+
+
+async def test_patch_document_filename_success_200(client: AsyncClient):
+    """PATCH con filename nuevo: 200, filename cambiado, updated_at cambia."""
+    # 1. Crear documento inicial
+    create_resp = await client.post(
+        "/api/v1/documents",
+        json={
+            "checksum_sha256": "1" * 64,
+            "filename": "original.pdf",
+            "extracted_text": "Texto extraído inmutable",
+            "page_count": 2,
+            "file_size_bytes": 500,
+            "metadata": {"tag": "v1"},
+        },
+    )
+    assert create_resp.status_code == 201
+    created_doc = create_resp.json()
+    doc_id = created_doc["id"]
+    original_created_at = created_doc["created_at"]
+    original_updated_at = created_doc["updated_at"]
+
+    # 2. PATCH actualizando únicamente filename
+    patch_resp = await client.patch(
+        f"/api/v1/documents/{doc_id}",
+        json={"filename": "modificado.pdf"},
+    )
+    assert patch_resp.status_code == 200
+    patched_doc = patch_resp.json()
+
+    assert patched_doc["id"] == doc_id
+    assert patched_doc["filename"] == "modificado.pdf"
+    assert patched_doc["checksum_sha256"] == "1" * 64
+    assert patched_doc["extracted_text"] == "Texto extraído inmutable"
+    assert patched_doc["metadata"] == {"tag": "v1"}
+    assert patched_doc["created_at"] == original_created_at
+    assert patched_doc["updated_at"] >= original_updated_at
+
+
+async def test_patch_document_metadata_success_200(client: AsyncClient):
+    """PATCH con metadata nueva devuelve 200 y metadata cambiada."""
+    create_resp = await client.post(
+        "/api/v1/documents",
+        json={
+            "checksum_sha256": "2" * 64,
+            "filename": "test_meta.pdf",
+            "extracted_text": "Texto",
+            "metadata": {"tag": "inicial"},
+        },
+    )
+    assert create_resp.status_code == 201
+    doc_id = create_resp.json()["id"]
+
+    patch_resp = await client.patch(
+        f"/api/v1/documents/{doc_id}",
+        json={"metadata": {"tag": "modificado", "autor": "QA"}},
+    )
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["metadata"] == {"tag": "modificado", "autor": "QA"}
+    assert patch_resp.json()["filename"] == "test_meta.pdf"
+
+
+async def test_patch_document_immutable_checksum_fails_422(client: AsyncClient):
+    """PATCH con checksum_sha256 en el cuerpo es rechazado con 422 (inmutable)."""
+    create_resp = await client.post(
+        "/api/v1/documents",
+        json={
+            "checksum_sha256": "3" * 64,
+            "filename": "inmutable.pdf",
+            "extracted_text": "Texto",
+        },
+    )
+    assert create_resp.status_code == 201
+    doc_id = create_resp.json()["id"]
+
+    patch_resp = await client.patch(
+        f"/api/v1/documents/{doc_id}",
+        json={"checksum_sha256": "4" * 64},
+    )
+    assert patch_resp.status_code == 422
+    assert patch_resp.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+async def test_patch_document_immutable_extracted_text_fails_422(client: AsyncClient):
+    """PATCH intentando enviar extracted_text devuelve 422 (campo inmutable)."""
+    create_resp = await client.post(
+        "/api/v1/documents",
+        json={
+            "checksum_sha256": "5" * 64,
+            "filename": "inmutable_text.pdf",
+            "extracted_text": "Texto original",
+        },
+    )
+    assert create_resp.status_code == 201
+    doc_id = create_resp.json()["id"]
+
+    patch_resp = await client.patch(
+        f"/api/v1/documents/{doc_id}",
+        json={"extracted_text": "Texto hackeado"},
+    )
+    assert patch_resp.status_code == 422
+    assert patch_resp.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+async def test_patch_document_empty_body_fails_422(client: AsyncClient):
+    """PATCH con cuerpo vacío {} devuelve 422."""
+    create_resp = await client.post(
+        "/api/v1/documents",
+        json={
+            "checksum_sha256": "6" * 64,
+            "filename": "empty_patch.pdf",
+            "extracted_text": "Texto",
+        },
+    )
+    assert create_resp.status_code == 201
+    doc_id = create_resp.json()["id"]
+
+    patch_resp = await client.patch(
+        f"/api/v1/documents/{doc_id}",
+        json={},
+    )
+    assert patch_resp.status_code == 422
+    assert patch_resp.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+async def test_patch_document_not_found_returns_404(client: AsyncClient):
+    """PATCH sobre un ID inexistente devuelve 404."""
+    patch_resp = await client.patch(
+        "/api/v1/documents/00000000-0000-4000-8000-000000000000",
+        json={"filename": "nuevo.pdf"},
+    )
+    assert patch_resp.status_code == 404
+    assert patch_resp.json()["error"]["code"] == "DOCUMENT_NOT_FOUND"

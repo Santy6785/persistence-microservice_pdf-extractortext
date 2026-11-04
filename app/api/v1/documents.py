@@ -12,10 +12,11 @@ from app.api.schemas import (
     DocumentCreateRequest,
     DocumentResponse,
     DocumentSummaryResponse,
+    DocumentUpdateRequest,
     PaginatedDocumentsResponse,
 )
 from app.application.document_service import DocumentService
-from app.application.dtos import CreateDocumentDTO
+from app.application.dtos import CreateDocumentDTO, UpdateDocumentDTO
 from app.observability import log_event
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
@@ -119,3 +120,28 @@ async def delete_document(
     service: Annotated[DocumentService, Depends(get_document_service)],
 ) -> None:
     await service.delete_document(str(id))
+
+
+@router.patch(
+    "/{id}",
+    response_model=DocumentResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Actualizar parcialmente un documento existente (exclusivamente filename o metadata)",
+)
+async def update_document(
+    id: Annotated[uuid.UUID, Path(description="UUID v4 del documento a actualizar")],
+    request: DocumentUpdateRequest,
+    service: Annotated[DocumentService, Depends(get_document_service)],
+) -> DocumentResponse:
+    dto = UpdateDocumentDTO(
+        filename=request.filename,
+        metadata=request.metadata,
+    )
+    doc = await service.update_document(str(id), dto)
+    log_event(
+        "document_updated",
+        document_id=doc.id,
+        filename_updated=request.filename is not None,
+        metadata_updated=request.metadata is not None,
+    )
+    return DocumentResponse.from_entity(doc)
