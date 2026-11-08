@@ -256,6 +256,82 @@ async def test_trace_concurrent_requests_do_not_mix(client: AsyncClient, trace_a
 
 
 # ------------------------------------------------------------------
+# Test 8: Al superar TRACE_MAX_BODY_BYTES se deja de acumular chunks
+# ------------------------------------------------------------------
+
+
+async def test_trace_tope_max_body_no_acumula_chunks(
+    client: AsyncClient, trace_app: FastAPI
+):
+    """Si el cuerpo supera max_body_bytes, se guarda solo el tamaño y no se
+    acumula el contenido crudo en memoria."""
+    _reset()
+    raw = b"x" * 2000  # supera max_body_bytes=1024
+    resp = await client.post("/echo", content=raw)
+    assert resp.status_code == 200
+
+    req_info, _ = tr.last_request
+    assert req_info["body"] == "<body: 2000 bytes>"
+    # Nunca debe aparecer el contenido crudo acumulado
+    assert raw.decode() not in json.dumps(tr.last_request)
+
+
+# ------------------------------------------------------------------
+# Test 9: GET /trace sin petición previa -> 404 con formato uniforme
+# ------------------------------------------------------------------
+
+
+async def test_trace_endpoint_sin_previa_404_formato_uniforme(
+    client: AsyncClient, trace_app: FastAPI
+):
+    """Sin petición previa, GET /trace devuelve 404 con formato ErrorEnvelope."""
+    _reset()
+    resp = await client.get("/trace")
+    assert resp.status_code == 404
+    data = resp.json()
+    assert "error" in data
+    assert data["error"]["code"] == "NOT_FOUND"
+    assert data["error"]["request_id"] is not None
+
+
+# ------------------------------------------------------------------
+# Test 10: GET /trace con petición previa -> 200 con el JSON guardado
+# ------------------------------------------------------------------
+
+
+async def test_trace_endpoint_con_previa_200_json_guardado(
+    client: AsyncClient, trace_app: FastAPI
+):
+    """Con petición previa, GET /trace devuelve 200 con el JSON guardado
+    (redactado), y el texto original no aparece en la respuesta."""
+    await _post_document(client, CHECKSUM, SECRET_TEXT)
+    resp = await client.get("/trace")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["request"]["method"] == "POST"
+    assert data["request"]["path"] == "/api/v1/documents"
+    assert data["request"]["body"]["extracted_text"] == "<redacted: 120 chars>"
+    assert SECRET_TEXT not in json.dumps(data)
+    assert SECRET_TEXT not in resp.text
+
+
+# ------------------------------------------------------------------
+# Test 11: Los logs no contienen el texto extraído
+# ------------------------------------------------------------------
+
+
+async def test_trace_logs_no_contienen_texto(
+    client: AsyncClient, trace_app: FastAPI, caplog: pytest.LogCaptureFixture
+):
+    """caplog no debe contener el texto extraído en ninguna parte."""
+    caplog.set_level("INFO")
+    await _post_document(client, CHECKSUM, SECRET_TEXT)
+    resp = await client.get("/trace")
+    assert resp.status_code == 200
+    assert SECRET_TEXT not in caplog.text
+
+
+# ------------------------------------------------------------------
 # Test 7: Respuesta al cliente llega intacta (con y sin middleware)
 # ------------------------------------------------------------------
 
