@@ -80,6 +80,7 @@ Permite consultar los eventos de auditoría, trazabilidad y estado de procesamie
 
 * **Operación de solo lectura:** No altera estados del sistema ni datos de negocio.
 * **Depuración Segura:** Permite a operadores diagnosticar fallos sin vulnerar el secreto de los datos contenidos en los PDFs.
+* **Respuestas de error (>=400):** Cuando la respuesta de la petición capturada tiene código de estado >=400, el cuerpo de la petición **no se guarda** (se reemplaza por una nota de omisión) para evitar filtrar datos sensibles (p. ej. campos desconocidos con texto largo en un 422).
 
 ---
 

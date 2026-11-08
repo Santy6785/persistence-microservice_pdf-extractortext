@@ -7,7 +7,7 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI
 
-from app.api.error_handlers import register_error_handlers
+from app.api.error_handlers import build_error_payload, register_error_handlers
 from app.api.health import router as health_router
 from app.api.middlewares import RequestIdMiddleware, RequestSizeLimitMiddleware
 from app.api.v1.router import api_v1_router
@@ -18,7 +18,7 @@ from app.infrastructure.database.connection import (
     get_client,
 )
 from app.observability import configure_logging, log_event
-from app.trace import TraceMiddleware
+from app.trace import TraceMiddleware, last_request
 
 
 @asynccontextmanager
@@ -65,6 +65,31 @@ def create_app() -> FastAPI:
     # 3. Registro de routers
     app.include_router(health_router)
     app.include_router(api_v1_router)
+
+    # 4. Endpoint de diagnóstico /trace (fuera del router v1 para que su
+    # path sea exactamente "/trace" y el middleware lo excluya de la captura).
+    @app.get("/trace")
+    async def trace_endpoint():
+        """Devuelve la última petición y respuesta capturadas (redactadas).
+
+        Sin petición previa devuelve 404 con formato de error uniforme.
+        """
+        if last_request is None:
+            payload = build_error_payload(
+                code="NOT_FOUND",
+                message="No hay registro de la última petición.",
+                details={},
+                request_id="unknown",
+            )
+            from fastapi.responses import JSONResponse
+
+            return JSONResponse(status_code=404, content=payload)
+
+        request_info, response_info = last_request
+        return {
+            "request": request_info,
+            "response": response_info,
+        }
 
     return app
 

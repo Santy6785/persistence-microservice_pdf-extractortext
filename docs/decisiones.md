@@ -25,6 +25,7 @@ Este documento registra las decisiones clave de diseño, arquitectura y operabil
 * **Decisión:**
   1. El endpoint de diagnóstico `/trace` (y cualquier middleware/logger del sistema) aplica **redacción automática y obligatoria** sobre el campo `extracted_text`.
   2. Ningún log estructurado, traza de ejecución o respuesta de error (4xx / 5xx) expone el contenido textual del PDF. Solo se registran metadatos seguros: `document_id`, `checksum_sha256`, `filename`, `text_length` (longitud en caracteres) y códigos de evento.
+  3. Cuando la respuesta de la petición capturada tiene código de estado >=400, el cuerpo de la petición **no se guarda** (se reemplaza por una nota de omisión) para evitar filtrar datos sensibles (p. ej. campos desconocidos con texto largo en un 422).
 
 ---
 

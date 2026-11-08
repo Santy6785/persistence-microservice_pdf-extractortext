@@ -177,6 +177,14 @@ Todas las respuestas de error (`4xx` y `5xx`) responden con la siguiente estruct
 - `503 Service Unavailable` (`SERVICE_UNAVAILABLE`): fallo de infraestructura de persistencia (MongoDB caído o una operación de datos superó `MONGODB_OPERATION_TIMEOUT_MS`), capturado sin exponer secretos ni `extracted_text`.
 - `500 Internal Server Error` (`INTERNAL_SERVER_ERROR`): excepción inesperada no controlada.
 
+### Endpoint de diagnóstico `GET /trace`
+
+Devuelve la última petición y respuesta capturadas por el middleware de trazado (cuerpo y cabeceras con `extracted_text`, `Authorization` y `Cookie` redactados).
+
+- Cada réplica del servicio guarda **su propia** última petición en memoria; no hay compartición entre réplicas.
+- `/trace` **no tiene autenticación propia**: se asume que solo es accesible desde la red interna.
+- Sin petición previa devuelve `404` con formato de error uniforme.
+
 ---
 
 ## 7. Decisiones Técnicas y Pendientes con el Equipo

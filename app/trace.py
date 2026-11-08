@@ -66,20 +66,22 @@ class TraceMiddleware:
         # Captura del cuerpo de la petición (envuelve receive y reenvía chunks intactos)
         # ------------------------------------------------------------------
         request_chunks: list[bytes] = []
-        request_total = 0
+        request_total_stored = 0   # bytes acumulados en memoria (hasta el tope)
+        request_total_received = 0 # bytes totales recibidos (incluye lo excedido)
         request_exceeded = False
 
         async def trace_receive() -> Message:
-            nonlocal request_total, request_exceeded
+            nonlocal request_total_stored, request_total_received, request_exceeded
             message = await receive()
             if message["type"] == "http.request":
                 chunk = message.get("body", b"")
+                request_total_received += len(chunk)
                 if not request_exceeded:
-                    if request_total + len(chunk) > self.max_body_bytes:
+                    if request_total_stored + len(chunk) > self.max_body_bytes:
                         request_exceeded = True
                     else:
                         request_chunks.append(chunk)
-                        request_total += len(chunk)
+                        request_total_stored += len(chunk)
             return message
 
         # ------------------------------------------------------------------
@@ -123,7 +125,7 @@ class TraceMiddleware:
         if response_status is not None and response_status >= 400:
             request_body_stored = f"<body omitted: {response_status} error>"
         elif request_exceeded:
-            request_body_stored = f"<body: {request_total} bytes>"
+            request_body_stored = f"<body: {request_total_received} bytes>"
         else:
             request_body_stored = _process_body(b"".join(request_chunks))
 

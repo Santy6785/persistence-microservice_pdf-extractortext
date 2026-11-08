@@ -20,7 +20,7 @@ from httpx import ASGITransport, AsyncClient
 
 import app.trace as tr
 from app.api.dependencies import get_document_repository
-from app.api.error_handlers import register_error_handlers
+from app.api.error_handlers import build_error_payload, register_error_handlers
 from app.api.health import router as health_router
 from app.api.middlewares import RequestIdMiddleware, RequestSizeLimitMiddleware
 from app.api.v1.router import api_v1_router
@@ -50,6 +50,26 @@ def build_app(with_trace: bool = True, max_body_bytes: int = 1024) -> FastAPI:
     app.include_router(api_v1_router)
     app.include_router(health_router)
     register_error_handlers(app)
+
+    # Endpoint /trace (igual que en app.main.py) para probarlo en isolation.
+    @app.get("/trace")
+    async def trace_endpoint():
+        from fastapi.responses import JSONResponse
+
+        from app.trace import last_request as _last_request
+
+        if _last_request is None:
+            payload = build_error_payload(
+                code="NOT_FOUND",
+                message="No hay registro de la última petición.",
+                details={},
+                request_id="unknown",
+            )
+            return JSONResponse(status_code=404, content=payload)
+
+        request_info, response_info = _last_request
+        return {"request": request_info, "response": response_info}
+
     return app
 
 
@@ -224,10 +244,10 @@ async def test_trace_and_health_do_not_overwrite(client: AsyncClient, trace_app:
     assert resp_health.status_code == 200
     assert tr.last_request == saved_req
 
-    # GET /trace (excluido del trace; en este ciclo aun no existe como endpoint,
-    # por lo que devuelve 404 del router pero el middleware no lo captura)
+    # GET /trace (excluido del trace: no se pisa a sí mismo).
+    # Devuelve 200 con la última petición guardada y no la sobrescribe.
     resp_trace = await client.get("/trace")
-    assert resp_trace.status_code == 404
+    assert resp_trace.status_code == 200
     assert tr.last_request == saved_req
 
 
