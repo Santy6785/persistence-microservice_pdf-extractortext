@@ -394,6 +394,7 @@ async def test_request_size_middleware_rejects_over_limit_413_uniform(
         mongodb_server_selection_timeout_ms = 5000
         mongodb_connect_timeout_ms = 5000
         mongodb_socket_timeout_ms = 20000
+        trace_max_body_bytes = 1024 * 1024
 
     monkeypatch.setattr("app.config.get_settings", lambda: _SmallSettings())
     get_settings.cache_clear()

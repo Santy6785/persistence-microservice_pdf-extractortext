@@ -18,6 +18,7 @@ from app.infrastructure.database.connection import (
     get_client,
 )
 from app.observability import configure_logging, log_event
+from app.trace import TraceMiddleware
 
 
 @asynccontextmanager
@@ -50,7 +51,11 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # 1. Middlewares (RequestSizeLimit evalúa antes, RequestId propaga ID)
+    # 1. Middlewares.
+    # TraceMiddleware se registra PRIMERO para quedar DENTRO de
+    # RequestSizeLimitMiddleware: si este rechaza con 413, TraceMiddleware
+    # nunca lee el cuerpo.
+    app.add_middleware(TraceMiddleware, max_body_bytes=settings.trace_max_body_bytes)
     app.add_middleware(RequestSizeLimitMiddleware, max_size_bytes=settings.max_payload_size_bytes)
     app.add_middleware(RequestIdMiddleware)
 

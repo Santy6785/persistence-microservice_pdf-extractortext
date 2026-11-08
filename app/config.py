@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     # es el que rige las peticiones de datos reales.
     mongodb_operation_timeout_ms: int = 10000
 
+    # Tope configurable (bytes) del cuerpo que guarda el middleware de trazado
+    # (/trace). Si el cuerpo lo supera, se guarda solo el tamaño.
+    trace_max_body_bytes: int = 1024 * 1024  # 1 MB por defecto
+
     @model_validator(mode="before")
     @classmethod
     def _validate_mongodb_uri_presente(cls, data: dict) -> dict:

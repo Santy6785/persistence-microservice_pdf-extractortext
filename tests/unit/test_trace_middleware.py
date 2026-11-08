@@ -20,7 +20,10 @@ from httpx import ASGITransport, AsyncClient
 
 import app.trace as tr
 from app.api.dependencies import get_document_repository
+from app.api.error_handlers import register_error_handlers
+from app.api.health import router as health_router
 from app.api.middlewares import RequestIdMiddleware, RequestSizeLimitMiddleware
+from app.api.v1.router import api_v1_router
 from app.infrastructure.repositories.memory import InMemoryDocumentRepository
 from app.trace import TraceMiddleware
 
@@ -44,6 +47,9 @@ def build_app(with_trace: bool = True, max_body_bytes: int = 1024) -> FastAPI:
 
     repo = InMemoryDocumentRepository()
     app.dependency_overrides[get_document_repository] = lambda: repo
+    app.include_router(api_v1_router)
+    app.include_router(health_router)
+    register_error_handlers(app)
     return app
 
 
