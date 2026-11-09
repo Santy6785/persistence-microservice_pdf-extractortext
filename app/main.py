@@ -17,6 +17,8 @@ from app.infrastructure.database.connection import (
     ensure_indexes,
     get_client,
 )
+from app.metrics import MetricRegistry
+from app.metrics_middleware import MetricsMiddleware
 from app.observability import configure_logging, log_event
 from app.trace import TraceMiddleware, last_request
 
@@ -58,6 +60,13 @@ def create_app() -> FastAPI:
     app.add_middleware(TraceMiddleware, max_body_bytes=settings.trace_max_body_bytes)
     app.add_middleware(RequestSizeLimitMiddleware, max_size_bytes=settings.max_payload_size_bytes)
     app.add_middleware(RequestIdMiddleware)
+    # MetricsMiddleware es el MÁS EXTERNO (registrado último) para contar
+    # también los 413 del RequestSizeLimitMiddleware.
+    metrics_registry = MetricRegistry()
+    app.add_middleware(MetricsMiddleware, registry=metrics_registry)
+    # Guardar referencia al registro para que el endpoint /metrics pueda
+    # renderizar las métricas.
+    app.state.metrics_registry = metrics_registry
 
     # 2. Manejadores de error uniformes
     register_error_handlers(app)
@@ -90,6 +99,21 @@ def create_app() -> FastAPI:
             "request": request_info,
             "response": response_info,
         }
+
+    # 5. Endpoint de métricas Prometheus (formato texto, sin auth, solo red
+    # interna). Cada réplica tiene sus propios contadores en memoria.
+    @app.get("/metrics")
+    async def metrics_endpoint():
+        from fastapi.responses import PlainTextResponse
+
+        from app.metrics import render_text
+
+        registry = app.state.metrics_registry
+        texto = render_text(registry)
+        return PlainTextResponse(
+            content=texto,
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+        )
 
     return app
 

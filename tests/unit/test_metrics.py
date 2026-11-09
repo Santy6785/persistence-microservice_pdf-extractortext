@@ -61,6 +61,10 @@ def test_histograma_buckets_le():
     assert h.bucket_count(0.005, {"method": "GET", "route": "/health/live"}) == 1
     assert h.bucket_count(0.01, {"method": "GET", "route": "/health/live"}) == 2
     assert h.bucket_count(float("inf"), {"method": "GET", "route": "/health/live"}) == 3
+    # +Inf debe acumular todas las observaciones: +Inf == _count
+    assert h.bucket_count(
+        float("inf"), {"method": "GET", "route": "/health/live"}
+    ) == h.count({"method": "GET", "route": "/health/live"})
 
 
 def test_escape_etiquetas():

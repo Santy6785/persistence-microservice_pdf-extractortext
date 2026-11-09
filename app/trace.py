@@ -57,8 +57,8 @@ class TraceMiddleware:
             return
 
         path = scope.get("path", "")
-        # /trace y /health/* no se registran como última petición.
-        if path == "/trace" or path.startswith("/health/"):
+        # /trace, /metrics y /health/* no se registran como última petición.
+        if path == "/trace" or path == "/metrics" or path.startswith("/health/"):
             await self.app(scope, receive, send)
             return
 

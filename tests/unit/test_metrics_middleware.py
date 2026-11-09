@@ -13,9 +13,6 @@ Tests obligatorios (rojo antes de implementar):
 - Una excepción no controlada se cuenta como 500.
 """
 
-import asyncio
-import time
-
 import pytest
 from fastapi import FastAPI, Request
 from httpx import ASGITransport, AsyncClient
@@ -23,15 +20,15 @@ from starlette.applications import Starlette
 from starlette.routing import Route
 
 import app.trace as tr
-from app.trace import TraceMiddleware
 from app.api.dependencies import get_document_repository
 from app.api.error_handlers import register_error_handlers
+from app.api.health import router as health_router
 from app.api.middlewares import RequestIdMiddleware, RequestSizeLimitMiddleware
 from app.api.v1.router import api_v1_router
-from app.api.health import router as health_router
 from app.infrastructure.repositories.memory import InMemoryDocumentRepository
 from app.metrics import MetricRegistry
 from app.metrics_middleware import MetricsMiddleware
+from app.trace import TraceMiddleware
 
 CHECKSUM_1 = "a" * 64
 CHECKSUM_2 = "b" * 64
@@ -65,6 +62,19 @@ def build_http_app(registry=None, max_body_bytes=1024 * 1024) -> FastAPI:
     app.include_router(api_v1_router)
     app.include_router(health_router)
     register_error_handlers(app)
+
+    from fastapi.responses import PlainTextResponse
+
+    from app.metrics import render_text
+
+    @app.get("/metrics")
+    async def metrics_endpoint():
+        texto = render_text(registry)
+        return PlainTextResponse(
+            content=texto,
+            media_type="text/plain; version=0.0.4; charset=utf-8",
+        )
+
     return app
 
 
@@ -136,11 +146,54 @@ async def test_route_template_not_real_id():
         resp2 = await ac.get(f"/api/v1/documents/{id2}")
         assert resp2.status_code == 200
 
-    # Una sola serie con route="/api/v1/documents/{id}", status 200, valor 2
+    # Una sola serie con route="/api/v1/documents/{id}" (incluye prefijo),
+    # status 200, valor 2
     assert _counter_value(registry, "GET", "/api/v1/documents/{id}", "200") == 2
     # No debe haber serie con el id crudo como etiqueta
     assert _counter_value(registry, "GET", id1, "200") == 0
     assert _counter_value(registry, "GET", id2, "200") == 0
+
+
+# ------------------------------------------------------------------
+# Test 2b: Dos GET a /api/v1/by-checksum/{checksum} con checksums
+#         distintos = una sola serie con route="/api/v1/by-checksum/{checksum}"
+# ------------------------------------------------------------------
+
+
+async def test_route_template_by_checksum_not_real_value():
+    registry = MetricRegistry()
+    app = build_http_app(registry=registry)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        checksum1 = "1" * 64
+        checksum2 = "2" * 64
+        await ac.post(
+            "/api/v1/documents",
+            json={"checksum_sha256": checksum1, "filename": "a.pdf",
+                  "extracted_text": "texto 1", "page_count": 1,
+                  "file_size_bytes": 100, "metadata": {}},
+        )
+        await ac.post(
+            "/api/v1/documents",
+            json={"checksum_sha256": checksum2, "filename": "b.pdf",
+                  "extracted_text": "texto 2", "page_count": 1,
+                  "file_size_bytes": 100, "metadata": {}},
+        )
+
+        # GET por ambos checksums distintos
+        resp1 = await ac.get(f"/api/v1/documents/by-checksum/{checksum1}")
+        assert resp1.status_code == 200
+        resp2 = await ac.get(f"/api/v1/documents/by-checksum/{checksum2}")
+        assert resp2.status_code == 200
+
+    # Una sola serie con route="/api/v1/documents/by-checksum/{checksum}"
+    # (incluye prefijo + ruta del router), status 200, valor 2
+    assert _counter_value(
+        registry, "GET", "/api/v1/documents/by-checksum/{checksum}", "200"
+    ) == 2
+    # No debe haber serie con el checksum crudo como etiqueta
+    assert _counter_value(registry, "GET", checksum1, "200") == 0
+    assert _counter_value(registry, "GET", checksum2, "200") == 0
 
 
 # ------------------------------------------------------------------
@@ -228,7 +281,7 @@ async def test_unhandled_exception_counted_as_500():
     app = build_minimal_app(registry=registry)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        with pytest.raises(Exception):
+        with pytest.raises(RuntimeError):
             await ac.get("/boom")
     # La excepción se contó como 500
     assert _counter_value(registry, "GET", "/boom", "500") == 1
