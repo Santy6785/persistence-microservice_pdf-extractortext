@@ -110,3 +110,57 @@ def test_settings_con_mongodb_uri_carga_correctamente(
         == "mongodb://usuario:clave@mongodb:27017/persistence_db?authSource=admin"
     )
     assert settings.mongodb_db == "persistence_db"
+
+
+def test_log_level_valor_valido_case_insensitive(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """LOG_LEVEL acepta debug/info/warn/error sin distinguir mayúsculas."""
+    get_settings.cache_clear()
+    monkeypatch.setenv("MONGODB_URI", "mongodb://mongodb:27017")
+    for valor_entrada, valor_esperado in [
+        ("debug", "DEBUG"),
+        ("DEBUG", "DEBUG"),
+        ("Debug", "DEBUG"),
+        ("info", "INFO"),
+        ("INFO", "INFO"),
+        ("Info", "INFO"),
+        ("warn", "WARNING"),
+        ("WARN", "WARNING"),
+        ("Warn", "WARNING"),
+        ("error", "ERROR"),
+        ("ERROR", "ERROR"),
+        ("Error", "ERROR"),
+    ]:
+        monkeypatch.setenv("LOG_LEVEL", valor_entrada)
+        settings = Settings(_env_file=None)
+        assert settings.log_level == valor_esperado, (
+            f"LOG_LEVEL={valor_entrada!r} -> {settings.log_level!r}, esperado {valor_esperado!r}"
+        )
+        get_settings.cache_clear()
+
+
+def test_log_level_warn_se_mapea_a_warning(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """warn (minúsculas) se normaliza a WARNING."""
+    get_settings.cache_clear()
+    monkeypatch.setenv("MONGODB_URI", "mongodb://mongodb:27017")
+    monkeypatch.setenv("LOG_LEVEL", "warn")
+    settings = Settings(_env_file=None)
+    assert settings.log_level == "WARNING"
+
+
+def test_log_level_valor_invalido_falla_con_mensaje_claro(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Un valor de LOG_LEVEL no permitido lanza ValidationError."""
+    get_settings.cache_clear()
+    monkeypatch.setenv("MONGODB_URI", "mongodb://mongodb:27017")
+    monkeypatch.setenv("LOG_LEVEL", "trace")
+
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(_env_file=None)
+
+    assert "LOG_LEVEL" in str(exc_info.value)
+    assert "trace" in str(exc_info.value)
