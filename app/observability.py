@@ -9,7 +9,16 @@ from datetime import datetime, timezone
 
 SERVICE_NAME = "persistence"
 REQUEST_ID = contextvars.ContextVar("request_id", default="unknown")
-DOCUMENT_FIELDS = ("document_id", "checksum", "filename", "text_length")
+DOCUMENT_FIELDS = (
+    "document_id",
+    "checksum",
+    "filename",
+    "text_length",
+    "method",
+    "path",
+    "status",
+    "duration_s",
+)
 EVENT_LOGGER = logging.getLogger("persistence.events")
 
 
@@ -23,7 +32,7 @@ def reset_request_id(token: Token[str]) -> None:
 
 def _event_payload(
     level: str,
-    event: str,
+    message: str,
     request_id: str | None = None,
     **fields: str | int | None,
 ) -> dict[str, str | int]:
@@ -32,7 +41,7 @@ def _event_payload(
         "level": level,
         "service": SERVICE_NAME,
         "request_id": request_id or REQUEST_ID.get(),
-        "event": event,
+        "message": message,
     }
     payload.update(
         {
@@ -45,12 +54,12 @@ def _event_payload(
 
 
 def log_event(
-    event: str,
+    message: str,
     level: int = logging.INFO,
     request_id: str | None = None,
     **fields: str | int | None,
 ) -> None:
-    payload = _event_payload(logging.getLevelName(level), event, request_id, **fields)
+    payload = _event_payload(logging.getLevelName(level), message, request_id, **fields)
     EVENT_LOGGER.log(level, json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
 
 
