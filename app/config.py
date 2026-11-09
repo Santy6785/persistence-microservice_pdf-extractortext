@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     log_level: str = "INFO"
 
+    _LOG_LEVELS_VALIDOS = ("DEBUG", "INFO", "WARNING", "ERROR")
+
     max_payload_size_bytes: int = 14680064  # 14 MB (margen bajo el límite BSON de 16 MB)
 
     # MongoDB (única base de persistencia)
@@ -67,6 +69,21 @@ class Settings(BaseSettings):
                 "MONGODB_OPERATION_TIMEOUT_MS debe ser mayor que "
                 "MONGODB_SERVER_SELECTION_TIMEOUT_MS"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_log_level(self) -> "Settings":
+        """LOG_LEVEL acepta debug/info/warn/error sin distinguir mayúsculas.
+        'warn' se normaliza a WARNING. Cualquier otro valor es inválido."""
+        nivel = self.log_level.upper()
+        if nivel == "WARN":
+            nivel = "WARNING"
+        if nivel not in self._LOG_LEVELS_VALIDOS:
+            raise ValueError(
+                f"LOG_LEVEL inválido: '{self.log_level}'. "
+                f"Valores permitidos: {', '.join(self._LOG_LEVELS_VALIDOS)} (o 'warn')."
+            )
+        self.log_level = nivel
         return self
 
     model_config = SettingsConfigDict(
