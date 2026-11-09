@@ -61,7 +61,7 @@ async def test_create_document_success(client: AsyncClient, caplog: pytest.LogCa
         for record in caplog.records
         if record.name == "persistence.events"
     ]
-    create_logs = [entry for entry in logs if entry["event"] == "document_created"]
+    create_logs = [entry for entry in logs if entry["message"] == "document_created"]
     assert len(create_logs) == 1
     create_log = create_logs[0]
     assert create_log["timestamp"]
@@ -77,7 +77,7 @@ async def test_create_document_success(client: AsyncClient, caplog: pytest.LogCa
         "level",
         "service",
         "request_id",
-        "event",
+        "message",
         "document_id",
         "checksum",
         "filename",
@@ -126,7 +126,7 @@ async def test_create_document_duplicate_returns_409_uniform_without_extracted_t
         for record in caplog.records
         if record.name == "persistence.events"
     ]
-    conflict_logs = [entry for entry in logs if entry["event"] == "document_conflict"]
+    conflict_logs = [entry for entry in logs if entry["message"] == "document_conflict"]
     assert len(conflict_logs) == 1
     conflict_log = conflict_logs[0]
     assert conflict_log["service"] == "persistence"
@@ -336,7 +336,7 @@ async def test_503_infrastructure_error_returns_service_unavailable_without_extr
         if record.name == "persistence.events"
     ]
     failure_logs = [
-        entry for entry in logs if entry["event"] == "persistence_infrastructure_failure"
+        entry for entry in logs if entry["message"] == "persistence_infrastructure_failure"
     ]
     assert len(failure_logs) == 1
     assert failure_logs[0]["request_id"] == request_id

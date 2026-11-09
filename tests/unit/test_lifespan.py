@@ -44,4 +44,4 @@ async def test_lifespan_creates_and_closes_mongo_client(monkeypatch, caplog):
         for record in caplog.records
         if record.name == "persistence.events"
     ]
-    assert any(entry["event"] == "mongodb_client_closed" for entry in logs), logs
+    assert any(entry["message"] == "mongodb_client_closed" for entry in logs), logs
