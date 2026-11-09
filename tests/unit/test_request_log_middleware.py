@@ -310,3 +310,29 @@ async def test_texto_secreto_no_aparece_en_409_422_500(
     # Verificar que el secreto no aparece en ningún log
     caplog_text = caplog.text
     assert SECRET_TEXT not in caplog_text
+
+
+# ------------------------------------------------------------------
+# Test 7: Evento fuera de una petición no lleva method ni path
+# ------------------------------------------------------------------
+
+
+async def test_evento_fuera_de_peticion_no_lleva_method_path(
+    caplog: pytest.LogCaptureFixture,
+):
+    caplog.set_level(logging.INFO)
+    log_event(
+        "document_created",
+        logging.INFO,
+        "req-fuera-peticion",
+        document_id="x",
+        checksum="a" * 64,
+        filename="f.pdf",
+        text_length=1,
+    )
+    logs = _http_logs(caplog)
+    doc_created = [entry for entry in logs if entry["message"] == "document_created"]
+    assert len(doc_created) == 1
+    assert "method" not in doc_created[0]
+    assert "path" not in doc_created[0]
+    assert doc_created[0]["request_id"] == "req-fuera-peticion"

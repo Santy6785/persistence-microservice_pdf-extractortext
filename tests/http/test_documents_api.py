@@ -68,6 +68,8 @@ async def test_create_document_success(client: AsyncClient, caplog: pytest.LogCa
     assert create_log["level"] == "INFO"
     assert create_log["service"] == "persistence"
     assert create_log["request_id"] == request_id
+    assert create_log["method"] == "POST"
+    assert create_log["path"] == "/api/v1/documents"
     assert create_log["document_id"] == data["id"]
     assert create_log["checksum"] == "a" * 64
     assert create_log["filename"] == "informe.pdf"
@@ -78,11 +80,19 @@ async def test_create_document_success(client: AsyncClient, caplog: pytest.LogCa
         "service",
         "request_id",
         "message",
+        "method",
+        "path",
         "document_id",
         "checksum",
         "filename",
         "text_length",
     }
+    # El request_id de document_created es el mismo que la línea http_request
+    http_logs = [
+        entry for entry in logs if entry["message"] == "http_request"
+    ]
+    assert len(http_logs) == 1
+    assert create_log["request_id"] == http_logs[0]["request_id"]
     assert payload["extracted_text"] not in caplog.text
 
 
