@@ -70,8 +70,13 @@ class UvicornAccessJsonFormatter(logging.Formatter):
 
 
 def configure_logging() -> None:
+    from app.config import get_settings
+
+    settings = get_settings()
+    nivel = settings.log_level  # ya validado: DEBUG/INFO/WARNING/ERROR
+
     EVENT_LOGGER.disabled = False
-    EVENT_LOGGER.setLevel(logging.INFO)
+    EVENT_LOGGER.setLevel(nivel)
     EVENT_LOGGER.propagate = True
     if not any(getattr(handler, "_persistence_json", False) for handler in EVENT_LOGGER.handlers):
         handler = logging.StreamHandler(sys.stdout)
@@ -79,11 +84,9 @@ def configure_logging() -> None:
         handler._persistence_json = True
         EVENT_LOGGER.addHandler(handler)
 
+    # Desactivar uvicorn.access: RequestLogMiddleware ya emite una línea
+    # por petición con el esquema estructurado. Sin esto se duplicarían líneas.
     access_logger = logging.getLogger("uvicorn.access")
     access_logger.handlers.clear()
-    access_handler = logging.StreamHandler(sys.stdout)
-    access_handler.setFormatter(UvicornAccessJsonFormatter())
-    access_logger.addHandler(access_handler)
-    access_logger.disabled = False
-    access_logger.setLevel(logging.INFO)
+    access_logger.disabled = True
     access_logger.propagate = False

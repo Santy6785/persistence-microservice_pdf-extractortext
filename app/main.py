@@ -20,6 +20,7 @@ from app.infrastructure.database.connection import (
 from app.metrics import MetricRegistry
 from app.metrics_middleware import MetricsMiddleware
 from app.observability import configure_logging, log_event
+from app.request_log_middleware import RequestLogMiddleware
 from app.trace import TraceMiddleware, last_request
 
 
@@ -54,11 +55,14 @@ def create_app() -> FastAPI:
     )
 
     # 1. Middlewares.
-    # TraceMiddleware se registra PRIMERO para quedar DENTRO de
-    # RequestSizeLimitMiddleware: si este rechaza con 413, TraceMiddleware
-    # nunca lee el cuerpo.
+    # Orden de afuera hacia adentro: Metrics > RequestId > RequestLog >
+    # SizeLimit > Trace. En código se registran del más interno al más externo:
+    # Trace primero (más interno), luego SizeLimit, RequestLog, RequestId y
+    # Metrics (más externo). RequestLog está por fuera de SizeLimit para
+    # loguear también los 413.
     app.add_middleware(TraceMiddleware, max_body_bytes=settings.trace_max_body_bytes)
     app.add_middleware(RequestSizeLimitMiddleware, max_size_bytes=settings.max_payload_size_bytes)
+    app.add_middleware(RequestLogMiddleware)
     app.add_middleware(RequestIdMiddleware)
     # MetricsMiddleware es el MÁS EXTERNO (registrado último) para contar
     # también los 413 del RequestSizeLimitMiddleware.
