@@ -22,7 +22,7 @@ from typing import Optional
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.observability import REQUEST_ID, log_event
+from app.observability import REQUEST_ID, REQUEST_METHOD, REQUEST_PATH, log_event
 
 # Rutas que se loguean en DEBUG en lugar de INFO.
 _DEBUG_PATHS = ("/health/", "/metrics")
@@ -40,8 +40,12 @@ class RequestLogMiddleware:
             return
 
         path = scope.get("path", "")
+        method = scope.get("method", "")
         start = time.perf_counter()
         status: Optional[int] = None
+
+        method_token = REQUEST_METHOD.set(method)
+        path_token = REQUEST_PATH.set(path)
 
         async def traced_send(message: Message) -> None:
             nonlocal status
@@ -52,7 +56,10 @@ class RequestLogMiddleware:
         try:
             await self.app(scope, receive, traced_send)
         except Exception:
-            # La app lanzó una excepción sin haber enviado respuesta.
+            status = 500
+            raise
+        finally:
+            duration_s = round(time.perf_counter() - start, 4)
             request_id = REQUEST_ID.get()
             level = (
                 logging.DEBUG
@@ -63,26 +70,8 @@ class RequestLogMiddleware:
                 "http_request",
                 level=level,
                 request_id=request_id,
-                method=scope.get("method", ""),
-                path=path,
-                status=500,
-                duration_s=round(time.perf_counter() - start, 4),
+                status=status,
+                duration_s=duration_s,
             )
-            raise
-
-        duration_s = round(time.perf_counter() - start, 4)
-        request_id = REQUEST_ID.get()
-        level = (
-            logging.DEBUG
-            if path == "/metrics" or path.startswith("/health/")
-            else logging.INFO
-        )
-        log_event(
-            "http_request",
-            level=level,
-            request_id=request_id,
-            method=scope.get("method", ""),
-            path=path,
-            status=status,
-            duration_s=duration_s,
-        )
+            REQUEST_METHOD.reset(method_token)
+            REQUEST_PATH.reset(path_token)

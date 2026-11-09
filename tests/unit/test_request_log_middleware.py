@@ -330,7 +330,11 @@ async def test_evento_fuera_de_peticion_no_lleva_method_path(
         filename="f.pdf",
         text_length=1,
     )
-    logs = _http_logs(caplog)
+    logs = [
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if record.name == "persistence.events"
+    ]
     doc_created = [entry for entry in logs if entry["message"] == "document_created"]
     assert len(doc_created) == 1
     assert "method" not in doc_created[0]

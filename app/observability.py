@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 
 SERVICE_NAME = "persistence"
 REQUEST_ID = contextvars.ContextVar("request_id", default="unknown")
+REQUEST_METHOD = contextvars.ContextVar("request_method", default=None)
+REQUEST_PATH = contextvars.ContextVar("request_path", default=None)
 DOCUMENT_FIELDS = (
     "document_id",
     "checksum",
@@ -36,6 +38,18 @@ def _event_payload(
     request_id: str | None = None,
     **fields: str | int | None,
 ) -> dict[str, str | int]:
+    # Inyectar method y path del contextvar si no se pasaron explícitamente.
+    # Los eventos fuera de una petición (REQUEST_METHOD/REQUEST_PATH = None)
+    # no llevan method ni path.
+    if "method" not in fields or fields.get("method") is None:
+        ctx_method = REQUEST_METHOD.get()
+        if ctx_method is not None:
+            fields["method"] = ctx_method
+    if "path" not in fields or fields.get("path") is None:
+        ctx_path = REQUEST_PATH.get()
+        if ctx_path is not None:
+            fields["path"] = ctx_path
+
     payload: dict[str, str | int] = {
         "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
         "level": level,
