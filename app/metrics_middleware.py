@@ -10,6 +10,7 @@ en un MetricRegistry compartido.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Optional
 
@@ -71,7 +72,6 @@ class MetricsMiddleware:
             "http_request_duration_seconds", ["method", "route"],
             buckets=_DURATION_BUCKETS,
         )
-        self.gauge = self.registry.gauge("mongodb_up")
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -118,3 +118,21 @@ class MetricsMiddleware:
     # Expuesto para que el endpoint /metrics pueda leer el registro.
     def get_registry(self) -> MetricRegistry:
         return self.registry
+
+
+async def check_mongodb_up(timeout_ms: int = 2000) -> bool:
+    """Ejecuta un ping a MongoDB con timeout corto.
+
+    Devuelve True si el servidor responde, False en caso contrario
+    (incluyendo timeout). Nunca lanza excepción al caller.
+
+    Args:
+        timeout_ms: timeout máximo en milisegundos (default 2000 = 2 s).
+    """
+    from app.infrastructure.database.connection import ping
+
+    try:
+        async with asyncio.timeout(timeout_ms / 1000.0):
+            return await ping()
+    except Exception:
+        return False

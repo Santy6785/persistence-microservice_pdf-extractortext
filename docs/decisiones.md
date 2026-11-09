@@ -80,3 +80,5 @@ Este documento registra las decisiones clave de diseño, arquitectura y operabil
        }
      }
      ```
+
+   5. **Métricas Prometheus (/metrics):** El formato de texto es \	ext/plain; version=0.0.4\, escrito a mano sin depender de \prometheus_client\. Las métricas son por proceso (memoria), no hay autenticación (solo red interna) y Traefik no debe enrutar \/metrics\ al exterior. La etiqueta oute\ usa la plantilla de ruta (nunca ids, checksums o filenames). \/metrics\ no se cuenta a sí mismo; \/health/*\ sí. El ping a MongoDB (\mongodb_up\) usa un timeout corto configurable (\MONGODB_PING_TIMEOUT_MS\, default 2000 ms); si falla, \mongodb_up\ queda en 0 y el endpoint sigue respondiendo 200.

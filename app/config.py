@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     # es el que rige las peticiones de datos reales.
     mongodb_operation_timeout_ms: int = 10000
 
+    # Timeout corto (ms) para el ping de MongoDB en el endpoint /metrics.
+    # Debe ser menor que MONGODB_OPERATION_TIMEOUT_MS para no bloquear
+    # demasiado el endpoint de métricas.
+    mongodb_ping_timeout_ms: int = 2000
+
     # Tope configurable (bytes) del cuerpo que guarda el middleware de trazado
     # (/trace). Si el cuerpo lo supera, se guarda solo el tamaño.
     trace_max_body_bytes: int = 1024 * 1024  # 1 MB por defecto

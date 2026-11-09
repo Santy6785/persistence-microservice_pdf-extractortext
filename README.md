@@ -68,6 +68,7 @@ Variables disponibles:
 | `MONGODB_CONNECT_TIMEOUT_MS` | Timeout de conexión (ms) | `5000` |
 | `MONGODB_SOCKET_TIMEOUT_MS` | Timeout de socket (ms) | `20000` |
 | `MONGODB_OPERATION_TIMEOUT_MS` | Timeout máximo de cada operación de datos contra MongoDB (ms). Debe ser mayor que `MONGODB_SERVER_SELECTION_TIMEOUT_MS` | `10000` |
+| `MONGODB_PING_TIMEOUT_MS` | Timeout corto (ms) para el ping de MongoDB en el endpoint `/metrics` | `2000` |
 
 ---
 
@@ -184,6 +185,16 @@ Devuelve la última petición y respuesta capturadas por el middleware de trazad
 - Cada réplica del servicio guarda **su propia** última petición en memoria; no hay compartición entre réplicas.
 - `/trace` **no tiene autenticación propia**: se asume que solo es accesible desde la red interna.
 - Sin petición previa devuelve `404` con formato de error uniforme.
+
+### Endpoint de métricas `GET /metrics`
+
+Expone las métricas del microservicio en formato de texto de Prometheus
+(`text/plain; version=0.0.4`), escrito a mano sin `prometheus_client`.
+
+- Cada réplica del servicio mantiene **sus propios contadores en memoria**; no hay compartición entre réplicas.
+- `/metrics` **no tiene autenticación propia**: se asume que solo es accesible desde la red interna. Traefik no debe enrutar `/metrics` al exterior.
+- Siempre devuelve `200`, incluso si MongoDB no responde (`mongodb_up 0`).
+- El ping a MongoDB usa un timeout corto configurable (`MONGODB_PING_TIMEOUT_MS`, default 2000 ms).
 
 ---
 

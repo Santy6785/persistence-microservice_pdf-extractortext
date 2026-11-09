@@ -16,9 +16,9 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.dependencies import get_document_repository
 from app.api.error_handlers import register_error_handlers
+from app.api.health import router as health_router
 from app.api.middlewares import RequestIdMiddleware, RequestSizeLimitMiddleware
 from app.api.v1.router import api_v1_router
-from app.api.health import router as health_router
 from app.infrastructure.repositories.memory import InMemoryDocumentRepository
 from app.metrics import MetricRegistry, render_text
 from app.metrics_middleware import MetricsMiddleware
@@ -40,8 +40,13 @@ def build_metrics_app(registry=None, max_body_bytes=1024 * 1024) -> FastAPI:
 
     from fastapi.responses import PlainTextResponse
 
+    from app.metrics_middleware import check_mongodb_up
+
     @app.get("/metrics")
     async def metrics_endpoint():
+
+        is_up = await check_mongodb_up(2000)
+        registry.gauge("mongodb_up").set(1.0 if is_up else 0.0, {})
         texto = render_text(registry)
         return PlainTextResponse(
             content=texto,
@@ -94,7 +99,7 @@ async def test_metrics_ping_timeout_respected(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr("app.metrics_middleware.check_mongodb_up", slow_ping)
 
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=app, base_url="http://test") as ac:
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
         start = time.perf_counter()
         resp = await ac.get("/metrics")
         elapsed = time.perf_counter() - start

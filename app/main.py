@@ -107,8 +107,13 @@ def create_app() -> FastAPI:
         from fastapi.responses import PlainTextResponse
 
         from app.metrics import render_text
+        from app.metrics_middleware import check_mongodb_up
+
+        settings = get_settings()
+        is_up = await check_mongodb_up(settings.mongodb_ping_timeout_ms)
 
         registry = app.state.metrics_registry
+        registry.gauge("mongodb_up").set(1.0 if is_up else 0.0, {})
         texto = render_text(registry)
         return PlainTextResponse(
             content=texto,
