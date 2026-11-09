@@ -28,11 +28,15 @@ from app.api.health import router as health_router
 from app.api.middlewares import RequestIdMiddleware, RequestSizeLimitMiddleware
 from app.api.v1.router import api_v1_router
 from app.infrastructure.repositories.memory import InMemoryDocumentRepository
-from app.observability import DOCUMENT_FIELDS, EVENT_LOGGER, configure_logging, log_event
+from app.observability import (
+    DOCUMENT_FIELDS,
+    EVENT_LOGGER,
+    configure_logging,
+    log_event,
+)
 from app.request_log_middleware import RequestLogMiddleware
 
 CHECKSUM_1 = "a" * 64
-CHECKSUM_2 = "b" * 64
 SECRET_TEXT = "SECRET_DO_NOT_LEAK"
 
 
@@ -50,7 +54,7 @@ def build_http_app() -> FastAPI:
 
     @app.get("/boom")
     async def boom():
-        raise RuntimeError("excepción no controlada")
+        raise RuntimeError("excepcion no controlada")
 
     repo = InMemoryDocumentRepository()
     app.dependency_overrides[get_document_repository] = lambda: repo
@@ -72,29 +76,39 @@ async def client(app: FastAPI):
         yield ac
 
 
-def _capture_logs() -> list[dict]:
-    """Añade un StringIO handler a EVENT_LOGGER, lee los registros
-    con message=http_request acumulados, y remueve el handler."""
-    stream = io.StringIO()
-    handler = logging.StreamHandler(stream)
-    handler.setLevel(logging.DEBUG)
-    EVENT_LOGGER.addHandler(handler)
-    try:
-        contenido = stream.getvalue()
-    finally:
-        EVENT_LOGGER.removeHandler(handler)
+@pytest.fixture(autouse=True)
+def reset_event_logger_state():
+    """Aísla EVENT_LOGGER entre tests: limpia handlers, nivela a DEBUG.
 
-    records = []
-    for linea in contenido.strip().splitlines():
-        if not linea:
-            continue
-        try:
-            payload = json.loads(linea)
-        except (json.JSONDecodeError, ValueError):
-            continue
-        if payload.get("message") == "http_request":
-            records.append(payload)
-    return records
+    Otros test files (p. ej. test_log_level_ciclo4.py) pueden dejar
+    EVENT_LOGGER en nivel ERROR o con handlers extra, lo que filtraría
+    los logs INFO de http_request. Este fixture restaura un estado
+    conocido antes de cada test de este archivo."""
+    from app.config import get_settings
+
+    original_level = EVENT_LOGGER.level
+    original_propagate = EVENT_LOGGER.propagate
+    original_handlers = list(EVENT_LOGGER.handlers)
+
+    # Limpiar el cache de get_settings para que configure_logging() re-lea
+    # las variables de entorno (otro test file pudo haber dejado LOG_LEVEL
+    # cacheado en un valor distinto al default).
+    get_settings.cache_clear()
+
+    EVENT_LOGGER.setLevel(logging.DEBUG)
+    EVENT_LOGGER.propagate = True
+    for h in list(EVENT_LOGGER.handlers):
+        EVENT_LOGGER.removeHandler(h)
+    configure_logging()
+
+    yield
+
+    EVENT_LOGGER.setLevel(original_level)
+    EVENT_LOGGER.propagate = original_propagate
+    for h in list(EVENT_LOGGER.handlers):
+        EVENT_LOGGER.removeHandler(h)
+    for h in original_handlers:
+        EVENT_LOGGER.addHandler(h)
 
 
 # ------------------------------------------------------------------
@@ -219,11 +233,10 @@ async def test_413_se_loguea_con_request_id():
         EVENT_LOGGER.addHandler(handler)
         try:
             resp = await ac.post("/echo", content=b"x" * 100)
+            assert resp.status_code == 413
             contenido = stream.getvalue()
         finally:
             EVENT_LOGGER.removeHandler(handler)
-
-        assert resp.status_code == 413
 
     logs = []
     for linea in contenido.strip().splitlines():
@@ -353,7 +366,6 @@ async def test_path_sin_query_string(client: AsyncClient):
 
 
 async def test_texto_secreto_no_aparece_en_409_422_500(client: AsyncClient):
-    # Crear documento para luego obtener 409
     await client.post(
         "/api/v1/documents",
         json={
@@ -379,7 +391,6 @@ async def test_texto_secreto_no_aparece_en_409_422_500(client: AsyncClient):
     )
     assert resp409.status_code == 409
 
-    # 422: campo desconocido
     resp422 = await client.post(
         "/api/v1/documents",
         json={
@@ -391,7 +402,6 @@ async def test_texto_secreto_no_aparece_en_409_422_500(client: AsyncClient):
     )
     assert resp422.status_code == 422
 
-    # 500: excepción no controlada
     with pytest.raises(RuntimeError):
         await client.get("/boom")
 
