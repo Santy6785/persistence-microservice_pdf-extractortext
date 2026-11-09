@@ -17,12 +17,12 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.dependencies import get_document_repository
 from app.api.error_handlers import register_error_handlers
+from app.api.health import router as health_router
 from app.api.middlewares import RequestIdMiddleware, RequestSizeLimitMiddleware
 from app.api.v1.router import api_v1_router
-from app.api.health import router as health_router
 from app.infrastructure.repositories.memory import InMemoryDocumentRepository
+from app.observability import EVENT_LOGGER, configure_logging
 from app.request_log_middleware import RequestLogMiddleware
-from app.observability import configure_logging, EVENT_LOGGER
 
 
 def build_http_app() -> FastAPI:
