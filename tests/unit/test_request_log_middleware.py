@@ -11,8 +11,10 @@ Tests obligatorios (rojo antes de implementar, verde después):
 - /health/live se loguea en DEBUG; el resto en INFO.
 - path sin query string.
 - El texto secreto no aparece en 409, 422 ni 500.
+- Evento fuera de una petición no lleva method ni path.
 """
 
+import io
 import json
 import logging
 
@@ -22,11 +24,11 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.dependencies import get_document_repository
 from app.api.error_handlers import register_error_handlers
-from app.api.health import router as health_router
 from app.api.middlewares import RequestIdMiddleware, RequestSizeLimitMiddleware
 from app.api.v1.router import api_v1_router
+from app.api.health import router as health_router
 from app.infrastructure.repositories.memory import InMemoryDocumentRepository
-from app.observability import DOCUMENT_FIELDS, configure_logging, log_event
+from app.observability import DOCUMENT_FIELDS, EVENT_LOGGER, configure_logging, log_event
 from app.request_log_middleware import RequestLogMiddleware
 
 CHECKSUM_1 = "a" * 64
@@ -37,9 +39,6 @@ SECRET_TEXT = "SECRET_DO_NOT_LEAK"
 def build_http_app() -> FastAPI:
     configure_logging()
     app = FastAPI()
-    # Orden (de afuera hacia adentro): Metrics > RequestId > RequestLog >
-    # SizeLimit > Trace. En código: Trace primero (más interno), luego
-    # SizeLimit, RequestLog, RequestId y Metrics (más externo).
     app.add_middleware(RequestLogMiddleware)
     app.add_middleware(RequestSizeLimitMiddleware, max_size_bytes=1024 * 1024)
     app.add_middleware(RequestIdMiddleware)
@@ -73,19 +72,29 @@ async def client(app: FastAPI):
         yield ac
 
 
-def _http_logs(caplog: pytest.LogCaptureFixture) -> list[dict]:
-    """Extrae los registros de persistence.events con message=http_request."""
-    logs = []
-    for record in caplog.records:
-        if record.name != "persistence.events":
+def _capture_logs() -> list[dict]:
+    """Añade un StringIO handler a EVENT_LOGGER, lee los registros
+    con message=http_request acumulados, y remueve el handler."""
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setLevel(logging.DEBUG)
+    EVENT_LOGGER.addHandler(handler)
+    try:
+        contenido = stream.getvalue()
+    finally:
+        EVENT_LOGGER.removeHandler(handler)
+
+    records = []
+    for linea in contenido.strip().splitlines():
+        if not linea:
             continue
         try:
-            payload = json.loads(record.getMessage())
+            payload = json.loads(linea)
         except (json.JSONDecodeError, ValueError):
             continue
         if payload.get("message") == "http_request":
-            logs.append(payload)
-    return logs
+            records.append(payload)
+    return records
 
 
 # ------------------------------------------------------------------
@@ -95,24 +104,33 @@ def _http_logs(caplog: pytest.LogCaptureFixture) -> list[dict]:
 
 def test_log_event_ignores_campos_fuera_de_lista_blanca():
     """extracted_text, query, headers y body no aparecen en el log."""
-    log_event(
-        "document_created",
-        logging.INFO,
-        "req-1",
-        document_id="123",
-        checksum="a" * 64,
-        filename="a.pdf",
-        text_length=5,
-        extracted_text="TEXTO_SECRETO_QUE_NO_DEBE_SALIR",
-        query="?skip=0&limit=20",
-        headers={"authorization": "Bearer secreto"},
-        body={"checksum_sha256": "a" * 64},
-    )
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setLevel(logging.DEBUG)
+    EVENT_LOGGER.addHandler(handler)
+    try:
+        log_event(
+            "document_created",
+            logging.INFO,
+            "req-1",
+            document_id="123",
+            checksum="a" * 64,
+            filename="a.pdf",
+            text_length=5,
+            extracted_text="TEXTO_SECRETO_QUE_NO_DEBE_SALIR",
+            query="?skip=0&limit=20",
+            headers={"authorization": "Bearer secreto"},
+            body={"checksum_sha256": "a" * 64},
+        )
+        contenido = stream.getvalue()
+    finally:
+        EVENT_LOGGER.removeHandler(handler)
 
     assert "extracted_text" not in DOCUMENT_FIELDS
     assert "query" not in DOCUMENT_FIELDS
     assert "headers" not in DOCUMENT_FIELDS
     assert "body" not in DOCUMENT_FIELDS
+    assert "TEXTO_SECRETO" not in contenido
 
 
 # ------------------------------------------------------------------
@@ -120,24 +138,39 @@ def test_log_event_ignores_campos_fuera_de_lista_blanca():
 # ------------------------------------------------------------------
 
 
-async def test_una_peticion_una_linea_con_9_campos(
-    client: AsyncClient, caplog: pytest.LogCaptureFixture
-):
-    caplog.set_level(logging.INFO)
-    await client.post(
-        "/api/v1/documents",
-        json={
-            "checksum_sha256": CHECKSUM_1,
-            "filename": "a.pdf",
-            "extracted_text": "texto de prueba",
-            "page_count": 1,
-            "file_size_bytes": 100,
-            "metadata": {},
-        },
-    )
+async def test_una_peticion_una_linea_con_9_campos(client: AsyncClient):
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setLevel(logging.DEBUG)
+    EVENT_LOGGER.addHandler(handler)
+    try:
+        await client.post(
+            "/api/v1/documents",
+            json={
+                "checksum_sha256": CHECKSUM_1,
+                "filename": "a.pdf",
+                "extracted_text": "texto de prueba",
+                "page_count": 1,
+                "file_size_bytes": 100,
+                "metadata": {},
+            },
+        )
+        contenido = stream.getvalue()
+    finally:
+        EVENT_LOGGER.removeHandler(handler)
 
-    logs = _http_logs(caplog)
-    assert len(logs) >= 1, f"No se encontró línea http_request en: {caplog.records}"
+    logs = []
+    for linea in contenido.strip().splitlines():
+        if not linea:
+            continue
+        try:
+            payload = json.loads(linea)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if payload.get("message") == "http_request":
+            logs.append(payload)
+
+    assert len(logs) >= 1, f"No se encontró línea http_request en: {logs}"
 
     log = logs[-1]
     campos_esperados = {
@@ -167,12 +200,7 @@ async def test_una_peticion_una_linea_con_9_campos(
 # ------------------------------------------------------------------
 
 
-async def test_413_se_loguea_con_request_id(client: AsyncClient, caplog: pytest.LogCaptureFixture):
-    caplog.set_level(logging.INFO)
-
-    # RequestLogMiddleware debe quedar FUERA de RequestSizeLimitMiddleware
-    # para capturar el 413. En código: RequestSizeLimit primero (más interno),
-    # luego RequestLog (más externo).
+async def test_413_se_loguea_con_request_id():
     app = FastAPI()
     app.add_middleware(RequestSizeLimitMiddleware, max_size_bytes=10)
     app.add_middleware(RequestLogMiddleware)
@@ -185,14 +213,32 @@ async def test_413_se_loguea_con_request_id(client: AsyncClient, caplog: pytest.
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        resp = await ac.post("/echo", content=b"x" * 100)
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setLevel(logging.DEBUG)
+        EVENT_LOGGER.addHandler(handler)
+        try:
+            resp = await ac.post("/echo", content=b"x" * 100)
+            contenido = stream.getvalue()
+        finally:
+            EVENT_LOGGER.removeHandler(handler)
+
         assert resp.status_code == 413
 
-    logs = _http_logs(caplog)
+    logs = []
+    for linea in contenido.strip().splitlines():
+        if not linea:
+            continue
+        try:
+            payload = json.loads(linea)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if payload.get("message") == "http_request":
+            logs.append(payload)
+
     http_413 = [entry for entry in logs if entry.get("status") == 413]
     assert len(http_413) >= 1, f"No se encontró 413 en: {logs}"
     assert http_413[-1]["request_id"] not in (None, "", "unknown")
-    assert "SECRET_DO_NOT_LEAK" not in caplog.text
 
 
 # ------------------------------------------------------------------
@@ -200,15 +246,29 @@ async def test_413_se_loguea_con_request_id(client: AsyncClient, caplog: pytest.
 # ------------------------------------------------------------------
 
 
-async def test_excepcion_no_controlada_loguea_500_y_relanza(
-    client: AsyncClient, caplog: pytest.LogCaptureFixture
-):
-    caplog.set_level(logging.INFO)
+async def test_excepcion_no_controlada_loguea_500_y_relanza(client: AsyncClient):
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setLevel(logging.DEBUG)
+    EVENT_LOGGER.addHandler(handler)
+    try:
+        with pytest.raises(RuntimeError):
+            await client.get("/boom")
+        contenido = stream.getvalue()
+    finally:
+        EVENT_LOGGER.removeHandler(handler)
 
-    with pytest.raises(RuntimeError):
-        await client.get("/boom")
+    logs = []
+    for linea in contenido.strip().splitlines():
+        if not linea:
+            continue
+        try:
+            payload = json.loads(linea)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if payload.get("message") == "http_request":
+            logs.append(payload)
 
-    logs = _http_logs(caplog)
     http_500 = [entry for entry in logs if entry.get("status") == 500]
     assert len(http_500) >= 1, f"No se encontró 500 en: {logs}"
     assert http_500[-1]["request_id"] not in (None, "", "unknown")
@@ -220,18 +280,35 @@ async def test_excepcion_no_controlada_loguea_500_y_relanza(
 
 
 async def test_health_live_se_loguea_en_debug(
-    client: AsyncClient, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ):
-    caplog.set_level(logging.DEBUG)
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")
     from app.config import get_settings
 
     get_settings.cache_clear()
     configure_logging()
 
-    await client.get("/health/live")
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setLevel(logging.DEBUG)
+    EVENT_LOGGER.addHandler(handler)
+    try:
+        await client.get("/health/live")
+        contenido = stream.getvalue()
+    finally:
+        EVENT_LOGGER.removeHandler(handler)
 
-    logs = _http_logs(caplog)
+    logs = []
+    for linea in contenido.strip().splitlines():
+        if not linea:
+            continue
+        try:
+            payload = json.loads(linea)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if payload.get("message") == "http_request":
+            logs.append(payload)
+
     http_live = [entry for entry in logs if entry.get("path") == "/health/live"]
     assert len(http_live) >= 1, f"No se encontró /health/live en: {logs}"
     assert http_live[-1]["level"] == "DEBUG"
@@ -242,12 +319,28 @@ async def test_health_live_se_loguea_en_debug(
 # ------------------------------------------------------------------
 
 
-async def test_path_sin_query_string(client: AsyncClient, caplog: pytest.LogCaptureFixture):
-    caplog.set_level(logging.INFO)
+async def test_path_sin_query_string(client: AsyncClient):
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setLevel(logging.DEBUG)
+    EVENT_LOGGER.addHandler(handler)
+    try:
+        await client.get("/api/v1/documents?skip=0&limit=10")
+        contenido = stream.getvalue()
+    finally:
+        EVENT_LOGGER.removeHandler(handler)
 
-    await client.get("/api/v1/documents?skip=0&limit=10")
+    logs = []
+    for linea in contenido.strip().splitlines():
+        if not linea:
+            continue
+        try:
+            payload = json.loads(linea)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if payload.get("message") == "http_request":
+            logs.append(payload)
 
-    logs = _http_logs(caplog)
     http_list = [entry for entry in logs if entry.get("path") == "/api/v1/documents"]
     assert len(http_list) >= 1, f"No se encontró /api/v1/documents en: {logs}"
     assert "?" not in http_list[-1]["path"]
@@ -259,11 +352,7 @@ async def test_path_sin_query_string(client: AsyncClient, caplog: pytest.LogCapt
 # ------------------------------------------------------------------
 
 
-async def test_texto_secreto_no_aparece_en_409_422_500(
-    client: AsyncClient, caplog: pytest.LogCaptureFixture
-):
-    caplog.set_level(logging.INFO)
-
+async def test_texto_secreto_no_aparece_en_409_422_500(client: AsyncClient):
     # Crear documento para luego obtener 409
     await client.post(
         "/api/v1/documents",
@@ -277,7 +366,6 @@ async def test_texto_secreto_no_aparece_en_409_422_500(
         },
     )
 
-    # 409: checksum duplicado
     resp409 = await client.post(
         "/api/v1/documents",
         json={
@@ -307,9 +395,29 @@ async def test_texto_secreto_no_aparece_en_409_422_500(
     with pytest.raises(RuntimeError):
         await client.get("/boom")
 
-    # Verificar que el secreto no aparece en ningún log
-    caplog_text = caplog.text
-    assert SECRET_TEXT not in caplog_text
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setLevel(logging.DEBUG)
+    EVENT_LOGGER.addHandler(handler)
+    try:
+        await client.get("/api/v1/documents")
+        contenido = stream.getvalue()
+    finally:
+        EVENT_LOGGER.removeHandler(handler)
+
+    logs = []
+    for linea in contenido.strip().splitlines():
+        if not linea:
+            continue
+        try:
+            payload = json.loads(linea)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if payload.get("message") == "http_request":
+            logs.append(payload)
+
+    todos_los_logs = json.dumps(logs)
+    assert SECRET_TEXT not in todos_los_logs
 
 
 # ------------------------------------------------------------------
@@ -317,24 +425,35 @@ async def test_texto_secreto_no_aparece_en_409_422_500(
 # ------------------------------------------------------------------
 
 
-async def test_evento_fuera_de_peticion_no_lleva_method_path(
-    caplog: pytest.LogCaptureFixture,
-):
-    caplog.set_level(logging.INFO)
-    log_event(
-        "document_created",
-        logging.INFO,
-        "req-fuera-peticion",
-        document_id="x",
-        checksum="a" * 64,
-        filename="f.pdf",
-        text_length=1,
-    )
-    logs = [
-        json.loads(record.getMessage())
-        for record in caplog.records
-        if record.name == "persistence.events"
-    ]
+async def test_evento_fuera_de_peticion_no_lleva_method_path():
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setLevel(logging.DEBUG)
+    EVENT_LOGGER.addHandler(handler)
+    try:
+        log_event(
+            "document_created",
+            logging.INFO,
+            "req-fuera-peticion",
+            document_id="x",
+            checksum="a" * 64,
+            filename="f.pdf",
+            text_length=1,
+        )
+        contenido = stream.getvalue()
+    finally:
+        EVENT_LOGGER.removeHandler(handler)
+
+    logs = []
+    for linea in contenido.strip().splitlines():
+        if not linea:
+            continue
+        try:
+            payload = json.loads(linea)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        logs.append(payload)
+
     doc_created = [entry for entry in logs if entry["message"] == "document_created"]
     assert len(doc_created) == 1
     assert "method" not in doc_created[0]

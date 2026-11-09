@@ -104,3 +104,8 @@ def configure_logging() -> None:
     access_logger.handlers.clear()
     access_logger.disabled = True
     access_logger.propagate = False
+
+    # Aplicar el mismo nivel de LOG_LEVEL a uvicorn y uvicorn.error.
+    for logger_name in ("uvicorn", "uvicorn.error"):
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(nivel)
