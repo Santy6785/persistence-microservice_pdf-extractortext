@@ -65,9 +65,9 @@ Este documento registra las decisiones clave de diseño, arquitectura y operabil
 * **Estado:** Aceptado.
 * **Contexto:** Alineación con los estándares globales del sistema y las decisiones adoptadas en el frontend (D-5). El campo del evento se renombró de `event` a `message` para claridad semántica, y `LOG_LEVEL` se integra con `uvicorn` y `uvicorn.error` para evitar ruido de acceso duplicado.
 * **Decisión:**
-  1. **Logging estructurado:** Emisión de logs exclusivamente en formato JSON por `stdout`.
+  1. **Logging estructurado:** Emisión de logs exclusivamente en formato JSON por `stdout`. El campo `level` usa mayúsculas (`INFO`, `WARNING`, `ERROR`) — **asumido, pendiente de confirmar con el frontend**.
   2. **Propagación de contexto:** Cada petición HTTP debe contar con un identificador de correlación `request_id` (propagado vía cabecera `X-Request-ID` o generado automáticamente mediante UUID v4 en `RequestIdMiddleware`).
-  3. **Estructura uniforme de eventos:** Los logs incluyen `timestamp` (UTC ISO-8601), `level`, `service: "persistence"`, `request_id`, `message` y atributos específicos no sensibles. El campo `message` identifica el tipo de evento (`http_request`, `document_created`, `document_conflict`, etc.). Los eventos de negocio fuera de un contexto de petición no llevan `method` ni `path`.
+  3. **Estructura uniforme de eventos:** Los logs incluyen `timestamp` (UTC ISO-8601), `level`, `service: "persistence"`, `request_id`, `message` y atributos específicos no sensibles. **Los campos presentes en todas las líneas de log —**`timestamp`, `level`, `service`, `request_id`, `message`**— están asumidos, pendiente de confirmar con el frontend.** El campo `message` identifica el tipo de evento (`http_request`, `document_created`, `document_conflict`, etc.). Los eventos de negocio fuera de un contexto de petición no llevan `method` ni `path`.
   4. **VALORES PERMITIDOS PARA `LOG_LEVEL`:**
      | Valor de entorno | Nivel interno | Descripción |
      | :--- | :--- | :--- |
