@@ -63,12 +63,21 @@ Este documento registra las decisiones clave de diseño, arquitectura y operabil
 ## D-5: Convenciones de Observabilidad, Métricas y Logging
 
 * **Estado:** Aceptado.
-* **Contexto:** Alineación con los estándares globales del sistema y las decisiones adoptadas en el frontend (D-5).
+* **Contexto:** Alineación con los estándares globales del sistema y las decisiones adoptadas en el frontend (D-5). El campo del evento se renombró de `event` a `message` para claridad semántica, y `LOG_LEVEL` se integra con `uvicorn` y `uvicorn.error` para evitar ruido de acceso duplicado.
 * **Decisión:**
   1. **Logging estructurado:** Emisión de logs exclusivamente en formato JSON por `stdout`.
   2. **Propagación de contexto:** Cada petición HTTP debe contar con un identificador de correlación `request_id` (propagado vía cabecera `X-Request-ID` o generado automáticamente mediante UUID v4 en `RequestIdMiddleware`).
-  3. **Estructura uniforme de eventos:** Los logs incluyen `timestamp` (UTC ISO-8601), `level`, `service: "persistence"`, `request_id`, `event` y atributos específicos no sensibles.
-  4. **Formato uniforme de error (`ErrorEnvelope`):** Todas las respuestas de error en la API v1 cumplen con la estructura estandarizada:
+  3. **Estructura uniforme de eventos:** Los logs incluyen `timestamp` (UTC ISO-8601), `level`, `service: "persistence"`, `request_id`, `message` y atributos específicos no sensibles. El campo `message` identifica el tipo de evento (`http_request`, `document_created`, `document_conflict`, etc.). Los eventos de negocio fuera de un contexto de petición no llevan `method` ni `path`.
+  4. **VALORES PERMITIDOS PARA `LOG_LEVEL`:**
+     | Valor de entorno | Nivel interno | Descripción |
+     | :--- | :--- | :--- |
+     | `debug` | `DEBUG` | Todo: incluye líneas de `/health/*` y `/metrics` |
+     | `info` | `INFO` | Por defecto: una línea por petición HTTP (message=`http_request`) y eventos de negocio |
+     | `warn` | `WARNING` | Solo `WARNING` y `ERROR` (`warn` se normaliza a `WARNING`) |
+     | `error` | `ERROR` | Solo `ERROR` |
+     El valor es case-insensitive. Cualquier otro valor es rechazado con un `ValidationError` claro que nombra a la variable `LOG_LEVEL`.
+  5. **Aplicación del nivel:** `configure_logging()` aplica el nivel de `LOG_LEVEL` a `persistence.events`, `uvicorn` y `uvicorn.error`. `uvicorn.access` se desactiva porque `RequestLogMiddleware` ya emite una línea estructurada por petición (evitando duplicados).
+  6. **Formato uniforme de error (`ErrorEnvelope`):** Todas las respuestas de error en la API v1 cumplen con la estructura estandarizada:
      ```json
      {
        "error": {

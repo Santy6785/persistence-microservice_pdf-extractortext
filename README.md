@@ -70,6 +70,63 @@ Variables disponibles:
 | `MONGODB_OPERATION_TIMEOUT_MS` | Timeout máximo de cada operación de datos contra MongoDB (ms). Debe ser mayor que `MONGODB_SERVER_SELECTION_TIMEOUT_MS` | `10000` |
 | `MONGODB_PING_TIMEOUT_MS` | Timeout corto (ms) para el ping de MongoDB en el endpoint `/metrics` | `2000` |
 
+### Valores permitidos para `LOG_LEVEL`
+
+`LOG_LEVEL` acepta los siguientes valores (sin distinguir mayúsculas/minúsculas). El valor `warn` se normaliza automáticamente a `WARNING`. Cualquier otro valor es rechazado con un mensaje de error claro que nombra a la variable.
+
+| Valor | Nivel interno | Descripción |
+| :--- | :--- | :--- |
+| `debug` | `DEBUG` | Todo: incluye líneas de `/health/*` y `/metrics` |
+| `info` | `INFO` | Por defecto: una línea por petición HTTP (message=`http_request`) y eventos de negocio |
+| `warn` | `WARNING` | Solo `WARNING` y `ERROR` |
+| `error` | `ERROR` | Solo `ERROR` |
+
+**Ejemplo:**
+```bash
+LOG_LEVEL=error   # solo líneas de error en persistence.events, uvicorn y uvicorn.error
+LOG_LEVEL=debug   # incluye /health/* y /metrics en DEBUG
+```
+
+Es recomendable usar `error` en producción para evitar ruido en los logs, y `debug` solo durante diagnóstico.
+
+### Esquema de logs estructurados
+
+Todos los logs se emiten como una sola línea JSON por `stdout` con el esquema base:
+
+```json
+{
+  "timestamp": "2026-11-09T14:56:32.235+00:00",
+  "level": "INFO",
+  "service": "persistence",
+  "request_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "message": "http_request"
+}
+```
+
+Campos adicionales según el tipo de evento:
+
+| Campo | Tipo | Presente en | Descripción |
+| :--- | :--- | :--- | :--- |
+| `message` | string | todo | Tipo de evento: `http_request`, `document_created`, `document_conflict`, `document_updated`, `document_deleted` |
+| `level` | string | todo | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `service` | string | todo | Siempre `"persistence"` |
+| `request_id` | string | todo | ID de correlación de la petición |
+| `method` | string | `http_request` | Método HTTP (`GET`, `POST`, `PATCH`, `DELETE`) |
+| `path` | string | `http_request` | Ruta sin query string (ej. `/api/v1/documents`) |
+| `status` | int | `http_request` | Código de estado HTTP (incluye `413`, `500` en excepciones) |
+| `duration_s` | float | `http_request` | Duración de la petición en segundos |
+| `document_id` | string | eventos de negocio | UUID del documento |
+| `checksum` | string | eventos de negocio | Checksum SHA-256 (64 chars, minúsculas) |
+| `filename` | string | eventos de negocio | Nombre del archivo |
+| `text_length` | int | eventos de negocio | Longitud del texto extraído (sin exponer el contenido) |
+
+**Reglas de negocio del logging:**
+- Un evento de negocio (`document_created`, etc.) fuera de un contexto de petición **no** lleva `method` ni `path`.
+- `/health/*` y `/metrics` se loguean en `DEBUG`; el resto de rutas en `INFO`.
+- Una petición sin respuesta (excepción no controlada) se loguea con `status=500` y se relanza.
+- `uvicorn.access` está desactivado: `RequestLogMiddleware` ya emite una línea estructurada por petición, evitando duplicados.
+- Nunca se loguean `extracted_text`, cabeceras, query string, cuerpo de la petición ni texto de excepciones.
+
 ---
 
 ## 4. Instalación y Ejecución
