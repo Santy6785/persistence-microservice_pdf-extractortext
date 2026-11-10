@@ -1,10 +1,40 @@
 import os
+import time
 
 import pytest
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
 
 from app.config import get_settings
 from app.infrastructure.database import connection
 from app.infrastructure.database.connection import ensure_indexes
+
+
+def _wait_for_mongo(uri: str, timeout_s: float = 30.0) -> None:
+    """Espera hasta que mongod responda al ping (máximo timeout_s segundos).
+
+    testcontainers levanta el contenedor pero mongod puede tardar unos
+    segundos en aceptar conexiones. Sin esta espera, el primer test de
+    la suite falla con ServerSelectionTimeoutError.
+    """
+    deadline = time.monotonic() + timeout_s
+    last_error = None
+    while time.monotonic() < deadline:
+        try:
+            client = MongoClient(
+                uri,
+                serverSelectionTimeoutMS=1000,
+                connectTimeoutMS=1000,
+            )
+            try:
+                client.admin.command("ping")
+                return
+            finally:
+                client.close()
+        except PyMongoError as exc:  # noqa: BLE001 - reintentar hasta timeout
+            last_error = exc
+        time.sleep(0.5)
+    raise RuntimeError(f"MongoDB no estuvo listo en {timeout_s}s: {last_error}")
 
 
 @pytest.fixture(scope="class")
@@ -15,6 +45,7 @@ def mongo_container():
     try:
         container = MongoDbContainer("mongo:7")
         container.start()
+        _wait_for_mongo(container.get_connection_url())
     except Exception as exc:  # noqa: BLE001 - no hay Docker o no hay Mongo
         pytest.skip(f"No se pudo levantar Mongo (¿Docker activo?): {exc}")
     yield container

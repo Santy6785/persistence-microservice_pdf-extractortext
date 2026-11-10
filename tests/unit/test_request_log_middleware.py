@@ -76,41 +76,6 @@ async def client(app: FastAPI):
         yield ac
 
 
-@pytest.fixture(autouse=True)
-def reset_event_logger_state():
-    """Aísla EVENT_LOGGER entre tests: limpia handlers, nivela a DEBUG.
-
-    Otros test files (p. ej. test_log_level_ciclo4.py) pueden dejar
-    EVENT_LOGGER en nivel ERROR o con handlers extra, lo que filtraría
-    los logs INFO de http_request. Este fixture restaura un estado
-    conocido antes de cada test de este archivo."""
-    from app.config import get_settings
-
-    original_level = EVENT_LOGGER.level
-    original_propagate = EVENT_LOGGER.propagate
-    original_handlers = list(EVENT_LOGGER.handlers)
-
-    # Limpiar el cache de get_settings para que configure_logging() re-lea
-    # las variables de entorno (otro test file pudo haber dejado LOG_LEVEL
-    # cacheado en un valor distinto al default).
-    get_settings.cache_clear()
-
-    EVENT_LOGGER.setLevel(logging.DEBUG)
-    EVENT_LOGGER.propagate = True
-    for h in list(EVENT_LOGGER.handlers):
-        EVENT_LOGGER.removeHandler(h)
-    configure_logging()
-
-    yield
-
-    EVENT_LOGGER.setLevel(original_level)
-    EVENT_LOGGER.propagate = original_propagate
-    for h in list(EVENT_LOGGER.handlers):
-        EVENT_LOGGER.removeHandler(h)
-    for h in original_handlers:
-        EVENT_LOGGER.addHandler(h)
-
-
 # ------------------------------------------------------------------
 # Test 0: log_event ignora campos fuera de la lista blanca
 # ------------------------------------------------------------------
