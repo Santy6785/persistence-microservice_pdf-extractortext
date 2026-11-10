@@ -6,6 +6,10 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: "${MONGODB_ROOT_PASSWORD:?Set MONGODB_ROOT_PASSWORD in .env}"
     volumes:
       - mongodb_data:/data/db
+    stop_signal: SIGTERM
+    stop_grace_period: 10s
+    networks:
+      - pdf-extractortext_pdf-network
     healthcheck:
       test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok' --username \"$${MONGODB_ROOT_USERNAME}\" --password \"$${MONGODB_ROOT_PASSWORD}\" --authenticationDatabase admin"]
       interval: 5s
@@ -24,6 +28,10 @@ services:
       MAX_PAYLOAD_SIZE_BYTES: "${MAX_PAYLOAD_SIZE_BYTES:-14680064}"
     expose:
       - "8000"
+    stop_signal: SIGTERM
+    stop_grace_period: 10s
+    networks:
+      - pdf-extractortext_pdf-network
     depends_on:
       mongodb:
         condition: service_healthy
@@ -37,6 +45,10 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+networks:
+  pdf-extractortext_pdf-network:
+    external: true
 
 volumes:
   mongodb_data:
