@@ -56,15 +56,15 @@ Permite recuperar el documento y su texto extraído a partir de la huella digita
 | **`404 Not Found`** | `DOCUMENT_NOT_FOUND` | No existe ningún documento con el checksum proporcionado. | `ErrorEnvelope` |
 | **`409 Conflict`** | `DOCUMENT_ALREADY_EXISTS` | *No aplica a lecturas.* Estandarizado en el catálogo: un duplicado solo se manifiesta en escrituras (`POST`). | `ErrorEnvelope` |
 | **`422 Unprocessable Entity`** | `VALIDATION_ERROR` | El parámetro `{checksum}` no cumple con el formato exacto de 64 caracteres hexadecimales. | `ErrorEnvelope` |
-| **`500 Internal Server Error`** | `PERSISTENCE_INFRASTRUCTURE_ERROR` | Error de consulta o deserialización en MongoDB. | `ErrorEnvelope` (sin texto sensible) |
-| **`503 Service Unavailable`** | `SERVICE_UNAVAILABLE` | Base de datos MongoDB no accesible o servicio en pausa operativa. | `ErrorEnvelope` |
+| **`500 Internal Server Error`** | `INTERNAL_SERVER_ERROR` | Excepción inesperada no controlada. | `ErrorEnvelope` |
+| **`503 Service Unavailable`** | `SERVICE_UNAVAILABLE` | Falla de infraestructura de persistencia (MongoDB inaccesible o error de operación de datos). | `ErrorEnvelope` |
 
 ---
 
 ## 5. Efectos Colaterales
 
 * **Operación de solo lectura:** No modifica la base de datos.
-* **Observabilidad:** Emisión de log con `checksum` (anónimo y seguro) y `request_id`.
+* **Observabilidad:** El middleware de registro emite una línea `http_request` por petición con `request_id`, `method`, `path`, `status` y `duration_s` (nivel INFO; `/health/*` y `/metrics` en DEBUG). No se loguea `checksum` ni `extracted_text`.
 
 ---
 
