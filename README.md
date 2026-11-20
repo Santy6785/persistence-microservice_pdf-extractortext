@@ -155,6 +155,7 @@ docker build -t persistence:latest .
 
 # Ejecutar contenedor
 docker run -p 8000:8000 --env-file .env persistence:latest
+# Nota: el `-p` aplica solo a `docker run` suelto; con `docker compose` el servicio no se publica en el host (solo `expose`).
 ```
 
 Al iniciar el contenedor, la aplicación crea los índices de MongoDB requeridos (checksum_sha256 único, y orden created_at/_id) antes de recibir tráfico. Si falla la creación de índices, el contenedor no inicia el servicio.
@@ -168,7 +169,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Compose levanta MongoDB 7 con un volumen persistente y espera su healthcheck (ping) antes de iniciar `persistence`. El puerto publicado es el de la API (`APP_PORT`, por defecto `8000`); MongoDB no se publica en el host. Las credenciales de Mongo solo viajan por variables de entorno, nunca se escriben en el repositorio.
+Compose levanta MongoDB 7 con un volumen persistente y espera su healthcheck (ping) antes de iniciar `persistence`. El servicio `persistence` expone el puerto `8000` mediante `expose`; **no se publica en el host** (el compose no define `ports`). MongoDB no se publica en el host. Las credenciales de Mongo solo viajan por variables de entorno, nunca se escriben en el repositorio.
 
 ---
 
@@ -264,3 +265,27 @@ Expone las métricas del microservicio en formato de texto de Prometheus
 5. **Inmutabilidad del Texto:** El texto extraído es estrictamente de solo lectura una vez guardado (WORM: *write-once, read-many*).
 6. **Operación `PATCH`:** Se acordó diferir la actualización parcial de metadatos a la versión **v1.1**, manteniendo el MVP limpio e inmutable.
 7. **Política de Borrado:** Implementado borrado físico (hard delete) en v1. Si el equipo requiere auditoría o GDPR detallado, se evaluará soft-delete (`deleted_at`) en v1.1.
+
+---
+
+## 8. Acceso desde otros servicios
+
+Desde otros servicios de la red `pdf-extractortext_pdf-network`, el microservicio `persistence` se alcanza por su alias DNS (el nombre del servicio en Compose):
+
+- **URL interna:** `http://persistence:8000`
+- **Red:** `pdf-extractortext_pdf-network` (externa; debe existir antes de ejecutar `docker compose up`).
+- **Publicación de puertos:** el servicio solo declara `expose: ["8000"]`; **no se publica en el host** salvo que se agregue `ports` al servicio `persistence` en `docker-compose.yml`.
+
+### Verificación de conectividad
+
+Desde cualquier contenedor de la misma red, por ejemplo con `curlimages/curl`:
+
+```bash
+docker run --rm --network pdf-extractortext_pdf-network curlimages/curl -s -o /dev/null -w "%{http_code}" http://persistence:8000/health/ready
+```
+
+Respuesta esperada: `200` si MongoDB responde; `503` si MongoDB no responde o no está listo.
+
+### Advertencia
+
+El puerto `8000` está fijo tanto en `docker-compose.yml` (`expose`) como en el healthcheck del servicio (`http://127.0.0.1:8000/health/ready`). Si se cambia `APP_PORT`, hay que actualizar ambos lugares **y** la URL interna (`http://persistence:<nuevo-puerto>`).
