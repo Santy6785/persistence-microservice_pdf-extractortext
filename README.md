@@ -276,6 +276,25 @@ Desde otros servicios de la red `pdf-extractortext_pdf-network`, el microservici
 - **Red:** `pdf-extractortext_pdf-network` (externa; debe existir antes de ejecutar `docker compose up`).
 - **Publicación de puertos:** el servicio solo declara `expose: ["8000"]`; **no se publica en el host** salvo que se agregue `ports` al servicio `persistence` en `docker-compose.yml`.
 
+### URLs internas y puertos
+
+| Servicio | URL interna | Puerto | Publicado en el host |
+| :--- | :--- | :---: | :---: |
+| `persistence` | `http://persistence:8000` | `8000` | No |
+| `mongodb` | `mongodb://mongodb:27017` | `27017` | No |
+
+**Construcción de `MONGODB_URI` en Compose:** `docker-compose.yml` (línea 25) define `MONGODB_URI` como:
+
+```
+mongodb://<usuario>:<contraseña>@mongodb:27017/?authSource=admin
+```
+
+donde `<usuario>` y `<contraseña>` provienen de `${MONGODB_ROOT_USERNAME}` y `${MONGODB_ROOT_PASSWORD}` (líneas 5-6 del compose), definidas en `.env`. Nunca se escriben credenciales reales en el repositorio.
+
+**Red compartida y alias DNS:** ambos servicios pertenecen a la red externa `pdf-extractortext_pdf-network` (líneas 12, 33 y 49-51 del compose), por lo que se resuelven por alias DNS (`persistence`, `mongodb`). Si otro stack en la misma red externa define un servicio llamado `mongodb`, el alias colisionará.
+
+**Endpoints sin autenticación:** `/metrics` y `/trace` no tienen autenticación propia y no deben enrutarse al exterior (ver sección 6 del README).
+
 ### Verificación de conectividad
 
 Desde cualquier contenedor de la misma red, por ejemplo con `curlimages/curl`:
