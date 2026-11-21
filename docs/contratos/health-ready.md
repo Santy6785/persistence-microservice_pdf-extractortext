@@ -50,7 +50,7 @@ Provee una sonda de comprobación de preparación (*readiness probe*) para orque
 | **`200 OK`** | `ready` | Conexión activa y respuesta positiva del comando `ping` en MongoDB. Apto para recibir tráfico. |
 | **`409 Conflict`** | — | *No aplica.* Documentado para alineación del catálogo de endpoints. |
 | **`500 Internal Server Error`** | `error` | Fallo de ejecución no capturado al evaluar dependencias. |
-| **`503 Service Unavailable`** | `unhealthy` | MongoDB no responde, timeout en socket, autenticación fallida o servicio en pausa administrativa (`pause`). El orquestador retira el pod/contenedor del balanceador. |
+| **`503 Service Unavailable`** | `unhealthy` | MongoDB no responde, timeout en socket o autenticación fallida. El orquestador retira el pod/contenedor del balanceador. |
 
 ---
 
@@ -63,6 +63,12 @@ Provee una sonda de comprobación de preparación (*readiness probe*) para orque
 
 ## 6. Requisitos No Funcionales
 
-* **Timeout Estricto:** La verificación está sujeta a `serverSelectionTimeoutMS` (default 5000 ms) para evitar el bloqueo indefinido de la sonda.
+* **Timeout:** El endpoint no define un timeout propio; hereda los del cliente MongoDB (`serverSelectionTimeoutMS=5000`, `connectTimeoutMS=5000`, `socketTimeoutMS=20000`). Medido el 20/11/2026: ~5,3 s con MongoDB caído y ~14,5 s con MongoDB colgado (valores observados, no garantizados). `MONGODB_PING_TIMEOUT_MS` **no se aplica** a este endpoint (solo a `/metrics`).
+* **Cuerpo del 503:** Fijo e invariable: `{"status": "unhealthy", "database": "disconnected"}`. No distingue la causa del fallo (MongoDB caído, timeout o autenticación fallida producen el mismo cuerpo).
+* **Formato de error:** El 503 de `/health/ready` **no usa `ErrorEnvelope`**; es la excepción documentada de los endpoints `/health/*`.
 * **Idempotencia:** Seguro e idempotente (`GET`).
 * **Protección de Tráfico:** Permite que Kubernetes no enrute tráfico a una instancia cuya base de datos se encuentra momentáneamente saturada o desconectada.
+
+### Nota para consumidores
+
+Correlacionar cada respuesta con la cabecera `X-Request-ID` (inyectada por `RequestIdMiddleware` en todas las respuestas). El detalle del fallo no viaja en el cuerpo: está en el log estructurado `database_health_check_failed` (nivel `WARNING`) de `persistence.events`. Para evitar sondas colgadas, usar un timeout de cliente mayor al peor caso observado o tratar el timeout del probe como "no listo".
