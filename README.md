@@ -308,3 +308,26 @@ Respuesta esperada: `200` si MongoDB responde; `503` si MongoDB no responde o no
 ### Advertencia
 
 El puerto `8000` está fijo tanto en `docker-compose.yml` (`expose`) como en el healthcheck del servicio (`http://127.0.0.1:8000/health/ready`). Si se cambia `APP_PORT`, hay que actualizar ambos lugares **y** la URL interna (`http://persistence:<nuevo-puerto>`).
+
+---
+
+## 9. Orden de arranque
+
+El orden recomendado para poner en marcha el flujo completo es: **persistencia → extractor → orquestador → front**. Es el orden verificado en este microservicio para que cada capa tenga disponibles sus dependencias cuando arranca.
+
+### Prerrequisito
+
+La red externa `pdf-extractortext_pdf-network` debe existir antes de levantar cualquier servicio:
+
+```bash
+docker network create pdf-extractortext_pdf-network
+```
+
+### Tabla de arranque ordenada
+
+| Paso | Servicio | Cómo arrancarlo | Comprobación de que está listo | Por qué va en este lugar |
+| :---: | :--- | :--- | :--- | :--- |
+| 1 | `persistence` (+ MongoDB) | `docker compose up -d --build` desde este directorio (`persistence/`). MongoDB arranca primero por `depends_on` con `service_healthy`; `persistence` solo expone el puerto `8000` (`expose`, sin `ports`). | `GET /health/ready` → `200` (comando `curlimages/curl` de la sección 8). | Es la base de datos persistente; extractor y orquestador dependen de ella. |
+| 2 | `extractor` | Ver el README de ese servicio (pendiente de completar por el equipo). | Ver el README de ese servicio (pendiente de completar por el equipo). | Genera el texto extraído que persistence guarda; debe estar antes del orquestador. |
+| 3 | Orquestador | `docker compose up -d` | `GET /api/v1/control/health` | Su health depende de alcanzar los servicios downstream (persistence y extractor), por eso va después de ambos. |
+| 4 | `front` | Ver el README de ese servicio (pendiente de completar por el equipo). | Ver el README de ese servicio (pendiente de completar por el equipo). | Capa de presentación; consume al orquestador, va al final. |
