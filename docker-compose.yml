@@ -1,28 +1,10 @@
 services:
-  mongodb:
-    image: mongo:7
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: "${MONGODB_ROOT_USERNAME:?Set MONGODB_ROOT_USERNAME in .env}"
-      MONGO_INITDB_ROOT_PASSWORD: "${MONGODB_ROOT_PASSWORD:?Set MONGODB_ROOT_PASSWORD in .env}"
-    volumes:
-      - mongodb_data:/data/db
-    stop_signal: SIGTERM
-    stop_grace_period: 10s
-    networks:
-      - pdf-extractortext_pdf-network
-    healthcheck:
-      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok' --username \"$${MONGODB_ROOT_USERNAME}\" --password \"$${MONGODB_ROOT_PASSWORD}\" --authenticationDatabase admin"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 5s
-
   persistence:
     build: .
     env_file:
       - .env
     environment:
-      MONGODB_URI: "mongodb://${MONGODB_ROOT_USERNAME:?Set MONGODB_ROOT_USERNAME in .env}:${MONGODB_ROOT_PASSWORD:?Set MONGODB_ROOT_PASSWORD in .env}@mongodb:27017/?authSource=admin"
+      MONGODB_URI: "${MONGODB_URI:?Set MONGODB_URI in .env to the external MongoDB connection string}"
       MONGODB_DB: "${MONGODB_DB:-persistence_db}"
       MONGODB_COLLECTION: "${MONGODB_COLLECTION:-documents}"
       MAX_PAYLOAD_SIZE_BYTES: "${MAX_PAYLOAD_SIZE_BYTES:-14680064}"
@@ -32,9 +14,6 @@ services:
     stop_grace_period: 10s
     networks:
       - pdf-extractortext_pdf-network
-    depends_on:
-      mongodb:
-        condition: service_healthy
     healthcheck:
       test:
         - CMD
@@ -49,6 +28,3 @@ services:
 networks:
   pdf-extractortext_pdf-network:
     external: true
-
-volumes:
-  mongodb_data:

@@ -48,4 +48,8 @@ USER appuser
 
 EXPOSE 8000
 
+# Señal de parada ordenada: SIGTERM permite al lifespan cerrar el cliente de
+# MongoDB antes de terminar el proceso.
+STOPSIGNAL SIGTERM
+
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
