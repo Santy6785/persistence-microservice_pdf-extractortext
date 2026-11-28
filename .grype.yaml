@@ -1,0 +1,34 @@
+﻿fail-on-severity: high
+output:
+  - table
+ignore:
+  - vulnerability: CVE-2025-15367
+    package:
+      name: python
+      type: binary
+    reason: "Severity Medium (EPSS 0.6%). Fix only in Python >=3.15.0a6; runtime uses Python 3.13-slim without affected parser exposure. Expires: 2027-03-01."
+  - vulnerability: CVE-2026-124851
+    package:
+      name: python
+      type: binary
+    reason: "Severity Medium (EPSS 0.3%). Fix only in Python >=3.16.0a2; scheduled for runtime major upgrade. Expires: 2027-03-01."
+  - vulnerability: CVE-2026-124249
+    package:
+      name: python
+      type: binary
+    reason: "Severity Medium (EPSS 0.3%). Fix only in Python >=3.16.0; scheduled for runtime major upgrade. Expires: 2027-03-01."
+  - vulnerability: CVE-2026-116566
+    package:
+      name: python
+      type: binary
+    reason: "Severity Low (EPSS 0.5%). Fix only in Python >=3.16.0; scheduled for runtime major upgrade. Expires: 2027-03-01."
+  - vulnerability: CVE-2026-115559
+    package:
+      name: python
+      type: binary
+    reason: "Severity Medium (EPSS 0.2%). Fix only in Python >=3.16.0; scheduled for runtime major upgrade. Expires: 2027-03-01."
+  - vulnerability: CVE-2026-115791
+    package:
+      name: python
+      type: binary
+    reason: "Severity Medium (EPSS 0.2%). Fix only in Python >=3.16.0; scheduled for runtime major upgrade. Expires: 2027-03-01."
