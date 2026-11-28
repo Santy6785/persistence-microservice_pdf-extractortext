@@ -1,4 +1,4 @@
-"""
+﻿"""
 Inyección de dependencias para los endpoints de FastAPI.
 Provee el repositorio de persistencia (MongoDB) y el servicio de aplicación.
 """
@@ -7,7 +7,9 @@ from typing import Annotated
 
 from fastapi import Depends
 
+from app.api.health import check_db_health
 from app.application.document_service import DocumentService
+from app.domain.exceptions import PersistenceInfrastructureError
 from app.domain.repositories import DocumentRepository
 from app.infrastructure.database.connection import get_database_name
 from app.infrastructure.repositories.mongo import MongoDocumentRepository
@@ -37,8 +39,14 @@ def get_document_repository() -> DocumentRepository:
     return MongoDocumentRepository()
 
 
-def get_document_service(
+async def get_document_service(
     repository: Annotated[DocumentRepository, Depends(get_document_repository)],
 ) -> DocumentService:
-    """Provee la instancia de DocumentService con su repositorio inyectado."""
+    """Provee DocumentService verificando antes que MongoDB esté healthy."""
+    if isinstance(repository, MongoDocumentRepository):
+        is_healthy = await check_db_health()
+        if not is_healthy:
+            raise PersistenceInfrastructureError(
+                "MongoDB is unavailable or health check timed out."
+            )
     return DocumentService(repository=repository)

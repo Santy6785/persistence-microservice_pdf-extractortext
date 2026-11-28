@@ -1,4 +1,4 @@
-# Microservicio de Persistencia (`persistence`)
+﻿# Microservicio de Persistencia (`persistence`)
 
 Microservicio backend del sistema de extracción de texto de PDFs responsable exclusivamente de **persistir de forma durable, garantizar la integridad y unicidad estricta, y consultar el texto extraído y sus metadatos asociados**.
 
@@ -68,7 +68,8 @@ Variables disponibles:
 | `MONGODB_CONNECT_TIMEOUT_MS` | Timeout de conexión (ms) | `5000` |
 | `MONGODB_SOCKET_TIMEOUT_MS` | Timeout de socket (ms) | `20000` |
 | `MONGODB_OPERATION_TIMEOUT_MS` | Timeout máximo de cada operación de datos contra MongoDB (ms). Debe ser mayor que `MONGODB_SERVER_SELECTION_TIMEOUT_MS` | `10000` |
-| `MONGODB_PING_TIMEOUT_MS` | Timeout corto (ms) para el ping de MongoDB en el endpoint `/metrics` | `2000` |
+| MONGODB_PING_TIMEOUT_MS | Timeout corto (ms) para el ping de MongoDB en /health/ready, pre-checks de operaciones y /metrics | 2000 |
+| TRACE_MAX_BODY_BYTES | Tope máximo (bytes) de cuerpo retenido por /trace | 1048576 (1 MB) |
 
 ### Valores permitidos para `LOG_LEVEL`
 
@@ -224,7 +225,8 @@ Todas las respuestas de error (`4xx` y `5xx`) responden con la siguiente estruct
 | `GET` | `/api/v1/documents/{id}` | `200 OK` | Recupera el documento y texto completo por UUID. |
 | `GET` | `/api/v1/documents/by-checksum/{checksum}` | `200 OK` | Recupera el documento por hash SHA-256. |
 | `GET` | `/api/v1/documents?skip=0&limit=20` | `200 OK` | Lista paginada determinista (`created_at DESC, id ASC`). **Excluye** `extracted_text`. |
-| `DELETE`| `/api/v1/documents/{id}` | `204 No Content` | Elimina el documento por UUID. |
+| PATCH | /api/v1/documents/{id} | 200 OK | Actualiza parcialmente ilename o metadata (campos inmutables rechazados con 422). |
+| DELETE| /api/v1/documents/{id} | 204 No Content | Elimina el documento por UUID. |
 | `GET` | `/health/live` | `200 OK` | Liveness probe: confirma proceso vivo (`{"status": "alive"}`). |
 | `GET` | `/health/ready` | `200 OK` / `503` | Readiness probe: verifica conexión activa a MongoDB (`ping`). |
 
@@ -238,7 +240,7 @@ Todas las respuestas de error (`4xx` y `5xx`) responden con la siguiente estruct
 
 ### Endpoint de diagnóstico `GET /trace`
 
-Devuelve la última petición y respuesta capturadas por el middleware de trazado (cuerpo y cabeceras con `extracted_text`, `Authorization` y `Cookie` redactados).
+Devuelve la última petición y respuesta capturadas por el middleware de trazado (cuerpo y cabeceras con `extracted_text`, `Authorization`, `Cookie`, `X-API-Key` y claves de secretos redactados).
 
 - Cada réplica del servicio guarda **su propia** última petición en memoria; no hay compartición entre réplicas.
 - `/trace` **no tiene autenticación propia**: se asume que solo es accesible desde la red interna.
@@ -289,3 +291,10 @@ Respuesta esperada: `200` si MongoDB responde; `503` si MongoDB no responde o no
 ### Advertencia
 
 El puerto `8000` está fijo tanto en `docker-compose.yml` (`expose`) como en el healthcheck del servicio (`http://127.0.0.1:8000/health/ready`). Si se cambia `APP_PORT`, hay que actualizar ambos lugares **y** la URL interna (`http://persistence:<nuevo-puerto>`).
+
+
+### Lifecycle seguro y apagado ordenado (SIGTERM)
+
+- **Pre-check de salud en operaciones:** Antes de aceptar operaciones sobre /api/v1/documents contra MongoDB, el servicio valida conectividad activa con timeout (MONGODB_PING_TIMEOUT_MS); si MongoDB no responde, responde 503 Service Unavailable (SERVICE_UNAVAILABLE) con el formato uniforme de error.
+- **Apagado ordenado (SIGTERM):** El contenedor configura STOPSIGNAL SIGTERM (stop_signal: SIGTERM, stop_grace_period: 10s en Compose) y el lifespan de FastAPI ejecuta wait close_client() al detenerse, emitiendo el evento estructurado mongodb_client_closed.
+- **Endpoints administrativos:** No se exponen endpoints públicos de control (pause, esume, shutdown), priorizando el apagado ordenado mediante SIGTERM gestionado por el orquestador.
