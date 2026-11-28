@@ -1,0 +1,99 @@
+﻿name: Security & Dependency Audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  python-dependency-audit:
+    name: Python Dependencies & SBOM (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.7"
+          enable-cache: true
+      - name: Verify uv.lock integrity
+        run: uv lock --check
+      - name: Export dependencies & CycloneDX SBOM
+        run: |
+          uv export --frozen --no-dev --format requirements-txt -o requirements-prod.txt
+          uv export --frozen --no-dev --format cyclonedx1.5 -o sbom-python-cyclonedx.json
+      - name: Run pip-audit
+        run: uvx pip-audit -r requirements-prod.txt --strict --desc
+      - name: Upload Python SBOM artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-sbom-cyclonedx
+          path: sbom-python-cyclonedx.json
+          retention-days: 30
+
+  container-image-grype-scan:
+    name: Container Image Scan (Grype)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: persistence-service:ci-scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Scan image with Grype (SARIF & severity gate)
+        id: grype-sarif
+        uses: anchore/scan-action@v5
+        with:
+          image: "persistence-service:ci-scan"
+          config-file: ".grype.yaml"
+          fail-build: true
+          severity-cutoff: high
+          output-format: sarif
+      - name: Scan image with Grype (JSON report)
+        if: always()
+        id: grype-json
+        uses: anchore/scan-action@v5
+        with:
+          image: "persistence-service:ci-scan"
+          config-file: ".grype.yaml"
+          fail-build: false
+          output-format: json
+      - name: Upload Grype SARIF & JSON reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grype-security-reports
+          path: |
+            ${{ steps.grype-sarif.outputs.sarif }}
+            ${{ steps.grype-json.outputs.json }}
+          retention-days: 30
+      - name: Upload SARIF to GitHub Security
+        if: always() && steps.grype-sarif.outputs.sarif != ''
+        uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true
+        with:
+          sarif_file: ${{ steps.grype-sarif.outputs.sarif }}
+
+  secret-hygiene-scan:
+    name: Secret Hygiene Scan (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

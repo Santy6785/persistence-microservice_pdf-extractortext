@@ -289,3 +289,7 @@ Respuesta esperada: `200` si MongoDB responde; `503` si MongoDB no responde o no
 ### Advertencia
 
 El puerto `8000` está fijo tanto en `docker-compose.yml` (`expose`) como en el healthcheck del servicio (`http://127.0.0.1:8000/health/ready`). Si se cambia `APP_PORT`, hay que actualizar ambos lugares **y** la URL interna (`http://persistence:<nuevo-puerto>`).
+
+## Seguridad y Auditoria de Dependencias
+- Pipeline automatizado en .github/workflows/security-audit.yml (pip-audit + SBOM CycloneDX, Anchore Grype con reporte SARIF/JSON y umbral bloqueante high en .grype.yaml, y Gitleaks).
+- Guia de ejecucion local y registro de remediaciones en docs/seguridad-auditoria.md.
