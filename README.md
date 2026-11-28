@@ -289,3 +289,8 @@ Respuesta esperada: `200` si MongoDB responde; `503` si MongoDB no responde o no
 ### Advertencia
 
 El puerto `8000` está fijo tanto en `docker-compose.yml` (`expose`) como en el healthcheck del servicio (`http://127.0.0.1:8000/health/ready`). Si se cambia `APP_PORT`, hay que actualizar ambos lugares **y** la URL interna (`http://persistence:<nuevo-puerto>`).
+
+### Rendimiento y política de caché
+
+- **Índices activos en MongoDB:** El servicio garantiza lecturas en tiempo sub-10 ms mediante el índice primario `_id`, el índice único `uq_checksum_sha256` y el índice compuesto `ix_created_at_id` (con proyección excluyente de `extracted_text` en listados).
+- **Evaluación de Redis (`ADR-002` / Issue `#21`):** Tras ejecutar el benchmark reproducible (`uv run python scripts/benchmark_persistence.py`), se decidió **no incorporar Redis** porque MongoDB indexado ofrece `p50 ~ 7.1 ms` en lookups por ID/checksum y agregar caché distribuida introduciría complejidad de invalidación tras `PATCH`/`DELETE` y duplicación de memoria para documentos de hasta 14 MB sin beneficio neto.

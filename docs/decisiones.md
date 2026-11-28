@@ -91,3 +91,15 @@ Este documento registra las decisiones clave de diseño, arquitectura y operabil
      ```
 
    5. **Métricas Prometheus (/metrics):** El formato de texto es \	ext/plain; version=0.0.4\, escrito a mano sin depender de \prometheus_client\. Las métricas son por proceso (memoria), no hay autenticación (solo red interna) y Traefik no debe enrutar \/metrics\ al exterior. La etiqueta oute\ usa la plantilla de ruta (nunca ids, checksums o filenames). \/metrics\ no se cuenta a sí mismo; \/health/*\ sí. El ping a MongoDB (\mongodb_up\) usa un timeout corto configurable (\MONGODB_PING_TIMEOUT_MS\, default 2000 ms); si falla, \mongodb_up\ queda en 0 y el endpoint sigue respondiendo 200.
+
+---
+
+## D-6: Descarte de Caché Redis en `persistence` (Evaluación con Evidencia)
+
+- **Estado:** Aceptado (`ADR-002`, Issue `#21`).
+- **Contexto:** Se evaluó mediante benchmark reproducible (`scripts/benchmark_persistence.py`) si una caché Redis mejoraba de forma significativa las lecturas por `id`, `checksum_sha256` o listado paginado sobre MongoDB 7.
+- **DecisiÃ³n:** **No incorporar Redis.** Las consultas indexadas en MongoDB (`_id` y `uq_checksum_sha256`) resuelven en **~7.1 ms (p50)** y **<11 ms (p95)** en documentos de 2 KB a 100 KB, mientras que el listado paginado proyectado sin `extracted_text` responde en **12.5 ms (p50)**.
+- **JustificaciÃ³n:**
+  1. El ahorro neto marginal frente a un salto adicional de red TCP + serialización JSON no justifica la complejidad de invalidación consistente tras `PATCH`/`DELETE`, control de *stampede* ni consumo duplicado de RAM para textos de hasta 14 MB.
+  2. No existe Redis externo disponible en la infraestructura actual (dependencia `#56` en Orchestrator).
+  3. Se mantiene la arquitectura simple, sin requisitos adicionales y con consistencia fuerte directa contra MongoDB.
