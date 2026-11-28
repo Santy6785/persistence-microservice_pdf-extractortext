@@ -1,4 +1,4 @@
-"""
+﻿"""
 Punto de entrada principal para la aplicación FastAPI del microservicio persistence.
 """
 
@@ -21,7 +21,8 @@ from app.metrics import MetricRegistry
 from app.metrics_middleware import MetricsMiddleware
 from app.observability import configure_logging, log_event
 from app.request_log_middleware import RequestLogMiddleware
-from app.trace import TraceMiddleware, last_request
+import app.trace as trace_module
+from app.trace import TraceMiddleware
 
 
 @asynccontextmanager
@@ -87,7 +88,7 @@ def create_app() -> FastAPI:
 
         Sin petición previa devuelve 404 con formato de error uniforme.
         """
-        if last_request is None:
+        if trace_module.last_request is None:
             payload = build_error_payload(
                 code="NOT_FOUND",
                 message="No hay registro de la última petición.",
@@ -98,7 +99,7 @@ def create_app() -> FastAPI:
 
             return JSONResponse(status_code=404, content=payload)
 
-        request_info, response_info = last_request
+        request_info, response_info = trace_module.last_request
         return {
             "request": request_info,
             "response": response_info,
@@ -128,3 +129,4 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+

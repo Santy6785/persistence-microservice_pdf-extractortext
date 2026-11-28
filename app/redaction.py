@@ -1,4 +1,4 @@
-"""
+﻿"""
 Funciones puras de redacción de datos sensibles.
 
 No depende de FastAPI ni de ningún framework, para poder reutilizarse tanto
@@ -11,32 +11,54 @@ bytes. Ninguna de estas funciones muta la entrada: devuelven copias.
 from typing import Any
 
 REDACTED_NON_STRING = "<redacted: non-string>"
+SENSITIVE_BODY_KEYS = frozenset(
+    {
+        "password",
+        "secret",
+        "token",
+        "api_key",
+        "apikey",
+        "access_token",
+        "refresh_token",
+        "mongodb_uri",
+        "connection_string",
+    }
+)
+SENSITIVE_HEADERS = frozenset(
+    {
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "set-cookie",
+        "x-api-key",
+        "api-key",
+        "x-auth-token",
+    }
+)
 
 
 def redact_extracted_text(value: Any) -> Any:
-    """Redacta recursivamente la clave ``extracted_text`` de un objeto JSON-like.
+    """Redacta recursivamente ``extracted_text`` y claves de secretos en un objeto JSON-like.
 
     Cuando el valor de ``extracted_text`` es un string, se reemplaza por
     ``"<redacted: N chars>"`` donde N es la cantidad de caracteres del string
     original (``len``, no bytes). Cuando el valor no es un string, se reemplaza
-    por ``"<redacted: non-string>"``. El resto de campos y niveles se conservan.
+    por ``"<redacted: non-string>"``. Las claves de credenciales/secretos se
+    reemplazan por ``"<redacted>"``. El resto de campos y niveles se conservan.
 
     Devuelve una copia profunda: la entrada nunca se muta.
-
-    Args:
-        value: objeto JSON-like (dict, lista o valor escalar).
-
-    Returns:
-        Copia con los valores de ``extracted_text`` redactados.
     """
     if isinstance(value, dict):
         result: dict[str, Any] = {}
         for key, val in value.items():
+            key_lower = key.lower() if isinstance(key, str) else ""
             if key == "extracted_text":
                 if isinstance(val, str):
                     result[key] = f"<redacted: {len(val)} chars>"
                 else:
                     result[key] = REDACTED_NON_STRING
+            elif key_lower in SENSITIVE_BODY_KEYS:
+                result[key] = "<redacted>"
             else:
                 result[key] = redact_extracted_text(val)
         return result
@@ -46,15 +68,10 @@ def redact_extracted_text(value: Any) -> Any:
 
 
 def redact_headers(headers: dict[str, str]) -> dict[str, str]:
-    """Devuelve una copia de las cabeceras redacting Authorization y Cookie.
-
-    La detección de las cabeceras sensibles es insensible a mayúsculas.
-    Los demás valores se conservan sin modificar.
-    """
-    sensitive = {"authorization", "cookie"}
+    """Devuelve una copia de las cabeceras redactando credenciales y cookies."""
     result: dict[str, str] = {}
     for key, val in headers.items():
-        if key.lower() in sensitive:
+        if key.lower() in SENSITIVE_HEADERS:
             result[key] = "<redacted>"
         else:
             result[key] = val
@@ -62,9 +79,5 @@ def redact_headers(headers: dict[str, str]) -> dict[str, str]:
 
 
 def non_json_body(body: bytes) -> str:
-    """Devuelve una descripción del cuerpo sin filtrar su contenido crudo.
-
-    Se usa cuando el cuerpo no es JSON válido o está malformado. Nunca se
-    devuelven los bytes originales, solo su longitud.
-    """
+    """Devuelve una descripción del cuerpo sin filtrar su contenido crudo."""
     return f"<non-json body: {len(body)} bytes>"
